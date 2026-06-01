@@ -1,0 +1,81 @@
+{
+  "project": "bposik_rainy_home",
+  "created_at": "2026-05-29T05:07:50.307830+00:00",
+  "directories": [
+    "images",
+    "clips",
+    "final"
+  ],
+  "images": [
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/images/cut_1.png",
+      "url": "/projects/bposik_rainy_home/images/cut_1.png",
+      "description": "'애견카페에서 다른 친구들과 신나게 노는 뽀식이' 시작, 뽀식이가 과하게 자신 있어함",
+      "provider": "openai",
+      "created_at": "2026-06-01T05:42:26.670478+00:00"
+    },
+    {
+      "cut_number": 2,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/images/cut_2.png",
+      "url": "/projects/bposik_rainy_home/images/cut_2.png",
+      "description": "계획과 다른 상황에 표정이 굳는 순간",
+      "provider": "openai",
+      "created_at": "2026-06-01T05:42:54.895270+00:00"
+    },
+    {
+      "cut_number": 3,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/images/cut_3.png",
+      "url": "/projects/bposik_rainy_home/images/cut_3.png",
+      "description": "어색하게 상황을 수습하려는 몸짓",
+      "provider": "openai",
+      "created_at": "2026-06-01T05:43:24.902620+00:00"
+    },
+    {
+      "cut_number": 4,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/images/cut_4.png",
+      "url": "/projects/bposik_rainy_home/images/cut_4.png",
+      "description": "생각보다 잘 풀린 듯 보이는 착각",
+      "provider": "openai",
+      "created_at": "2026-06-01T05:43:50.240808+00:00"
+    },
+    {
+      "cut_number": 5,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/images/cut_5.png",
+      "url": "/projects/bposik_rainy_home/images/cut_5.png",
+      "description": "마지막에 작은 실수로 웃음을 남김",
+      "provider": "openai",
+      "created_at": "2026-06-01T05:44:12.561272+00:00"
+    }
+  ],
+  "clips": [],
+  "final_video": "",
+  "updated_at": "2026-06-01T05:44:12.562685+00:00",
+  "topic": "애견카페에서 다른 친구들과 신나게 노는 뽀식이",
+  "last_topic": "애견카페에서 다른 친구들과 신나게 노는 뽀식이",
+  "last_generated_at": "2026-06-01T05:44:12.561360+00:00",
+  "duration": 20,
+  "motion_prompts": [
+    {
+      "cut": 1,
+      "motion_prompt": "Start: Black resolves into a wide exterior or spatial establishing frame where '애견카페에서 다른 친구들과 신나게 노는 뽀식이' is still distant and atmospheric. Motion: he sniffs the air, tilts his head, lifts one front paw slightly, eyes on the target. Camera: Slow diagonal dolly-in from wide to medium-wide, steadicam-stable with subtle downward tilt correction and soft inertia at start and stop. dry clean atmosphere, no rain, no wet-fur weather effect, calm breathable air; props and ambience: topic-appropriate props only, no umbrella unless explicitly implied by the topic; layered background motion continues at varied depth speeds End: The camera settles closer to the  environment, with foreground depth and the central visual subject clearly established. Reference Character: bposik_v2. Identity Lock: same dog in every cut; preserve the exact same face structure; preserve the same cream/apricot curly fur; preserve the same dark round eyes; preserve the same black button nose; preserve the same small compact body proportions; preserve the same teddy-bear grooming silhouette; do not change breed; do not change fur color; do not change face shape; do not make a different dog; do not age up or make puppy-like; do not change ear shape. ACTING LAYER: ACTING LAYER cut 1 (ESTABLISHING): facial expression: bright curious face, big attentive eyes preserving same eye shape; eye direction: eyes toward target, locked on something interesting ahead; eyes toward other dogs and cafe activity; head angle: head slightly tilted toward the target; ear motion: ears slightly perked; ears rotate toward cafe activity and other dogs; tail motion: tiny anticipatory tail wag; body posture: compact forward-leaning curiosity posture; paw action / small action: nose sniffing, front paw slightly lifted; lively step toward friends, one paw lifted in playful greeting; emotional beat: wonder and eager curiosity; story emotion: 자신; micro movement: nostril twitch, soft sniff, ear flick; curious sniff of cafe scents, playful social energy. Style acting preset: exaggerated cute expression, big curious eyes while preserving same eye shape, tiny head tilt, one paw lifted, ears slightly perked, playful tail wag, sneaky glance toward mom, cute guilty face, animated but realistic body language, clear readable pose change, not static, not neutral. Style layer: 코믹한영상+애니메이션. exaggerated cute expression, big curious eyes while preserving same eye shape, tiny head tilt, one paw lifted, ears slightly perked, playful tail wag, sneaky glance toward mom, cute guilty face, animated but realistic body language, clear readable pose change, not static, not neutral. Negative prompt: different dog, different breed, different fur color, changed face, long snout, oversized body, puppy-like different character, realistic random poodle not matching reference, static neutral pose, blank expression, starts still, then tilts head with a tiny step."
+    },
+    {
+      "cut": 2,
+      "motion_prompt": "Start: Begin on a medium detail frame where the subject or object is partially obscured by foreground texture. Motion: he glances toward mom, ears perk, tail gives a small wag, then he pauses. Camera: Small handheld lateral drift with a restrained pan across the detail, micro tilt corrections, no abrupt shake. dry clean atmosphere, no rain, no wet-fur weather effect, calm breathable air; props and ambience: topic-appropriate props only, no umbrella unless explicitly implied by the topic; layered background motion continues at varied depth speeds End: End with the important emotional detail in clean focus while the surrounding environment res softly layered. Reference Character: bposik_v2. Identity Lock: same dog in every cut; preserve the exact same face structure; preserve the same cream/apricot curly fur; preserve the same dark round eyes; preserve the same black button nose; preserve the same small compact body proportions; preserve the same teddy-bear grooming silhouette; do not change breed; do not change fur color; do not change face shape; do not make a different dog; do not age up or make puppy-like; do not change ear shape. ACTING LAYER: ACTING LAYER cut 2 (EMOTIONAL): facial expression: hopeful eager face with cute hesitation; eye direction: glance toward mom, then back toward the goal; head angle: head turns as he checks the space; ear motion: ears perked; tail motion: tail small wag; body posture: weight shifted forward, paused mid-approach; paw action / small action: cautious step forward, one paw lifted then frozen; emotional beat: excited but careful approach; story emotion: 당황; micro movement: paw hover, quick glance to mom, small tail wag. Style acting preset: exaggerated cute expression, big curious eyes while preserving same eye shape, tiny head tilt, one paw lifted, ears slightly perked, playful tail wag, sneaky glance toward mom, cute guilty face, animated but realistic body language, clear readable pose change, not static, not neutral. Style layer: 코믹한영상+애니메이션. exaggerated cute expression, big curious eyes while preserving same eye shape, tiny head tilt, one paw lifted, ears slightly perked, playful tail wag, sneaky glance toward mom, cute guilty face, animated but realistic body language, clear readable pose change, not static, not neutral. Negative prompt: different dog, different breed, different fur color, changed face, long snout, oversized body, puppy-like different character, realistic random poodle not matching reference, static neutral pose, blank expression, starts still, then tilts head with a tiny step."
+    },
+    {
+      "cut": 3,
+      "motion_prompt": "Start: Begin on the strongest composed hero frame, with '애견카페에서 다른 친구들과 신나게 노는 뽀식이' emotionally centered and visual layers already readable. Motion: he sneaks a peek back, hides a tiny guilty smile, posture stays relaxed but alert. Camera: Precision dolly push-in on the optical axis, minimal pan, soft ease-in and ease-out, steadicam weight preserved. dry clean atmosphere, no rain, no wet-fur weather effect, calm breathable air; props and ambience: topic-appropriate props only, no umbrella unless explicitly implied by the topic; layered background motion continues at varied depth speeds End: Finish a little closer, with the subject occupying more emotional weight and background depth compressed slightly. Reference Character: bposik_v2. Identity Lock: same dog in every cut; preserve the exact same face structure; preserve the same cream/apricot curly fur; preserve the same dark round eyes; preserve the same black button nose; preserve the same small compact body proportions; preserve the same teddy-bear grooming silhouette; do not change breed; do not change fur color; do not change face shape; do not make a different dog; do not age up or make puppy-like; do not change ear shape. ACTING LAYER: ACTING LAYER cut 3 (REVEAL): facial expression: innocent face, tiny guilty smile; eye direction: looking away then sneaky peek back; head angle: head turned away from mom; ear motion: one ear rotates back, then perks slightly; tail motion: tail wag hidden low; body posture: relaxed but alert posture, faking calm; paw action / small action: slow subtle paw shift while pretending not to notice; emotional beat: guilty-cute mischief; story emotion: 코믹; micro movement: side glance, lip lift, hidden tail twitch. Style acting preset: exaggerated cute expression, big curious eyes while preserving same eye shape, tiny head tilt, one paw lifted, ears slightly perked, playful tail wag, sneaky glance toward mom, cute guilty face, animated but realistic body language, clear readable pose change, not static, not neutral. Style layer: 코믹한영상+애니메이션. exaggerated cute expression, big curious eyes while preserving same eye shape, tiny head tilt, one paw lifted, ears slightly perked, playful tail wag, sneaky glance toward mom, cute guilty face, animated but realistic body language, clear readable pose change, not static, not neutral. Negative prompt: different dog, different breed, different fur color, changed face, long snout, oversized body, puppy-like different character, realistic random poodle not matching reference, static neutral pose, blank expression, starts still, then tilts head with a tiny step."
+    },
+    {
+      "cut": 4,
+      "motion_prompt": "Start: Begin from a side angle with the subject or environment entering the frame edge and foreground elements crossing the lens. Motion: he creeps forward in a careful sneaky step, tail raised slightly, ears alert. Camera: Smooth lateral steadicam track parallel to subject, slow pan follows movement, slight counter-tilt keeps horizon stable. dry clean atmosphere, no rain, no wet-fur weather effect, calm breathable air; props and ambience: topic-appropriate props only, no umbrella unless explicitly implied by the topic; layered background motion continues at varied depth speeds End: End after the lateral move reveals a new angle, leaving a clean directional line into the final cut. Reference Character: bposik_v2. Identity Lock: same dog in every cut; preserve the exact same face structure; preserve the same cream/apricot curly fur; preserve the same dark round eyes; preserve the same black button nose; preserve the same small compact body proportions; preserve the same teddy-bear grooming silhouette; do not change breed; do not change fur color; do not change face shape; do not make a different dog; do not age up or make puppy-like; do not change ear shape. ACTING LAYER: ACTING LAYER cut 4 (TRANSITION): facial expression: focused determined eyes, sneaky concentration; eye direction: focused eyes locked on target; head angle: head low and forward toward the goal; ear motion: ears forward and alert; tail motion: tail raised slightly, tense then small twitch; body posture: low body posture, careful sneaky step; paw action / small action: careful sneaky step with controlled paw placement; emotional beat: focused comic determination; story emotion: 들뜸; micro movement: nose lead, shoulder dip, paw placement pause. Style acting preset: exaggerated cute expression, big curious eyes while preserving same eye shape, tiny head tilt, one paw lifted, ears slightly perked, playful tail wag, sneaky glance toward mom, cute guilty face, animated but realistic body language, clear readable pose change, not static, not neutral. Style layer: 코믹한영상+애니메이션. exaggerated cute expression, big curious eyes while preserving same eye shape, tiny head tilt, one paw lifted, ears slightly perked, playful tail wag, sneaky glance toward mom, cute guilty face, animated but realistic body language, clear readable pose change, not static, not neutral. Negative prompt: different dog, different breed, different fur color, changed face, long snout, oversized body, puppy-like different character, realistic random poodle not matching reference, static neutral pose, blank expression, starts still, then tilts head with a tiny step."
+    },
+    {
+      "cut": 5,
+      "motion_prompt": "Start: Begin on the final emotional composition where the story point has already landed. Motion: he exhales softly, tail gives a small wag, eyes soften with happiness. Camera: Slow dolly-back from medium-wide to wide, minimal pan, optional tiny upward tilt for breathing room, soft deceleration into final hold. dry clean atmosphere, no rain, no wet-fur weather effect, calm breathable air; props and ambience: topic-appropriate props only, no umbrella unless explicitly implied by the topic; layered background motion continues at varied depth speeds End: End wider and calmer, with '애견카페에서 다른 친구들과 신나게 노는 뽀식이' receding into the environment before the fade-out. Reference Character: bposik_v2. Identity Lock: same dog in every cut; preserve the exact same face structure; preserve the same cream/apricot curly fur; preserve the same dark round eyes; preserve the same black button nose; preserve the same small compact body proportions; preserve the same teddy-bear grooming silhouette; do not change breed; do not change fur color; do not change face shape; do not make a different dog; do not age up or make puppy-like; do not change ear shape. ACTING LAYER: ACTING LAYER cut 5 (ENDING): facial expression: proud satisfied face, soft happy eyes; eye direction: soft eye contact toward mom or camera; head angle: tiny satisfied head tilt; ear motion: ears relaxed softly; tail motion: small tail wag slowing into calm; body posture: relaxed sitting or standing, settled companion pose; paw action / small action: paws settled, one small satisfied shift optional; emotional beat: warm relief and contentment; story emotion: 유쾌; micro movement: soft blink, gentle breath, tail slow-down. Style acting preset: exaggerated cute expression, big curious eyes while preserving same eye shape, tiny head tilt, one paw lifted, ears slightly perked, playful tail wag, sneaky glance toward mom, cute guilty face, animated but realistic body language, clear readable pose change, not static, not neutral. Style layer: 코믹한영상+애니메이션. exaggerated cute expression, big curious eyes while preserving same eye shape, tiny head tilt, one paw lifted, ears slightly perked, playful tail wag, sneaky glance toward mom, cute guilty face, animated but realistic body language, clear readable pose change, not static, not neutral. Negative prompt: different dog, different breed, different fur color, changed face, long snout, oversized body, puppy-like different character, realistic random poodle not matching reference, static neutral pose, blank expression, starts still, then tilts head with a tiny step."
+    }
+  ],
+  "style": "코믹한영상+애니메이션"
+}

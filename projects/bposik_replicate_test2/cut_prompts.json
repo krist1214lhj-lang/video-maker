@@ -1,0 +1,47 @@
+{
+  "topic": "뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상",
+  "style": "코믹한 영상",
+  "summary": "'뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상'을(를) 중심으로 코믹한 영상 톤으로 짧은 이야기가 전개된다. 뽀식이의 시선을 따라 분위기가 쌓이고, 마지막 컷에서 감정이 정리된다.",
+  "cuts": [
+    {
+      "cut_number": 1,
+      "cut_type": "ESTABLISHING",
+      "scene_description": "컷 1: 무엇이 시작될까?. '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' 스토리라인 흐름에 맞춘 establishing 장면.",
+      "narration": "'뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상'을(를) 중심으로 코믹한 영상 톤으로 짧은 이야기가 전개된다. 뽀식이의 시선을 따라 분위기가 쌓이고, 마지막 컷에서 감정이 정리된다. 무엇이 시작될까?",
+      "subtitle": "무엇이 시작될까?",
+      "image_prompt": "코믹한 영상, 무엇이 시작될까?, topic: 뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 2,
+      "cut_type": "EMOTIONAL",
+      "scene_description": "컷 2: 조금 더 다가가 보자.. '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' 스토리라인 흐름에 맞춘 emotional 장면.",
+      "narration": "조금 더 다가가 보자.",
+      "subtitle": "조금 더 다가가 보자.",
+      "image_prompt": "코믹한 영상, 조금 더 다가가 보자., topic: 뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 3,
+      "cut_type": "REVEAL",
+      "scene_description": "컷 3: 이제 이야기가 깊어졌다.. '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' 스토리라인 흐름에 맞춘 reveal 장면.",
+      "narration": "이제 이야기가 깊어졌다.",
+      "subtitle": "이제 이야기가 깊어졌다.",
+      "image_prompt": "코믹한 영상, 이제 이야기가 깊어졌다., topic: 뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 4,
+      "cut_type": "TRANSITION",
+      "scene_description": "컷 4: 이제 선택할 때다.. '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' 스토리라인 흐름에 맞춘 transition 장면.",
+      "narration": "이제 선택할 때다.",
+      "subtitle": "이제 선택할 때다.",
+      "image_prompt": "코믹한 영상, 이제 선택할 때다., topic: 뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 5,
+      "cut_type": "ENDING",
+      "scene_description": "컷 5: 오늘의 이야기가 이렇게 마무리된다.. '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' 스토리라인 흐름에 맞춘 ending 장면.",
+      "narration": "오늘의 이야기가 이렇게 마무리된다.",
+      "subtitle": "오늘의 이야기가 이렇게 마무리된다.",
+      "image_prompt": "코믹한 영상, 오늘의 이야기가 이렇게 마무리된다., topic: 뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+JOB: job_20260528_053241_1fc2fc3a
+
+CUT: 2
+
+PROVIDER: replicate
+
+MODEL: kwaivgi/kling-v2.1
+
+DURATION: 3s
+
+IMAGE URL: https://discern-statute-viability.ngrok-free.dev/generated_images/cut_2.png?v=1779945936
+
+MOTION PROMPT:
+
+Character consistency: keep the same small cream/apricot toy poodle named Bposik in every cut. Maintain fluffy curly coat texture, rounded teddy-bear face, dark glossy eyes, black nose, soft floppy ears, compact body proportions, short poodle legs, and gentle curious expression. Preserve the same dog identity across wide shots, emotional close-ups, reveal shots, transitions, and ending shots. Do not change breed, fur color, facial structure, body size, ear shape, or nose/eye placement.
+CUT TYPE: EMOTIONAL
+SHOT-TYPE MOTION GRAMMAR: subtle handheld intimacy with slow push-in and breathing motion
+Grammar camera movement: controlled handheld micro-drift, slow emotional push-in, tiny pan correction following the subject
+Grammar depth/parallax: shallow tactile foreground, soft background motion, human-scale parallax
+Grammar continuity: preserve eyeline, light direction, subject identity, and emotional pacing from the previous cut
+Grammar avoid: visible shake, decorative orbit, excessive background motion
+AI video motion prompt for EMOTIONAL cut. Shot-type grammar: subtle handheld intimacy with slow push-in and breathing motion. Grammar movement: controlled handheld micro-drift, slow emotional push-in, tiny pan correction following the subject. Grammar depth: shallow tactile foreground, soft background motion, human-scale parallax. Small handheld lateral drift with a restrained pan across the detail, micro tilt corrections, no abrupt shake. Subject motion: Hands, face, prop, or body detail shifts slightly through the midground to motivate the camera. Environmental/parallax motion: Soft room reflections, fabric movement, rain on glass, dust, or ambient background motion kept secondary. Motion intensity: Medium-low intensity, intimate movement, keep motion readable and natural. Transition plan: Match cut on direction or texture from the establishing shot; Wide dolly inertia softens into controlled handheld micro-movement, then steadies for the hero push.; Foreground texture gives way to a centered subject plane.. Continuity lock: Match the opener's light direction and carry the same weather or ambience into the detail layer preserve eyeline, light direction, subject identity, and emotional pacing from the previous cut. Preserve screen direction, light direction, weather/atmosphere, subject identity, and depth layering. Pacing: Detail beat that tightens attention, shorter than the opener but still unhurried. Camera speed: 0.45x observational move. Avoid visible shake, decorative orbit, excessive background motion, jump cuts, abrupt speed ramps, warped geometry, flicker, and decorative camera motion.
+Camera movement: Small handheld lateral drift with a restrained pan across the detail, micro tilt corrections, no abrupt shake
+Subject motion: Hands, face, prop, or body detail shifts slightly through the midground to motivate the camera
+Environmental motion and parallax: Soft room reflections, fabric movement, rain on glass, dust, or ambient background motion kept secondary
+Transition continuity: Match cut on direction or texture from the establishing shot; Receives the established environment from Cut 1 and translates it into a human-scale detail.; Prepares Cut 3 by isolating the emotional trigger that becomes the hero frame.
+Continuity lock: Match the opener's light direction and carry the same weather or ambience into the detail layer
+Motion strength: Medium-low; camera speed: 0.45x observational move; pacing: Detail beat that tightens attention, shorter than the opener but still unhurried.
+Keep screen direction, lighting, atmosphere, subject identity, and spatial depth consistent across cuts.

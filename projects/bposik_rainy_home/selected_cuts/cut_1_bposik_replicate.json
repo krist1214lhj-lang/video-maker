@@ -1,0 +1,22 @@
+{
+  "kind": "cut",
+  "collection": "selected_cuts",
+  "cut_number": 1,
+  "cut_type": "ESTABLISHING",
+  "provider": "replicate",
+  "duration": 3,
+  "active_character": "bposik",
+  "source_job_id": "job_20260528_052937_16ec5df1",
+  "video_file": "projects/bposik_rainy_home/selected_cuts/cut_1_bposik_replicate.mp4",
+  "video_url": "/projects/bposik_rainy_home/selected_cuts/cut_1_bposik_replicate.mp4",
+  "message": "Preserved Bposik rainy home selected cut.",
+  "previous_cut_memory": {},
+  "continuity_memory": {
+    "character_position": "small Bposik presence within rainy home establishing space",
+    "facing_direction": "inward toward the home interior, calm screen direction",
+    "emotional_state": "quiet anticipation",
+    "lighting_mood": "rainy soft ambient light with practical highlights",
+    "rain_weather_state": "steady rainy atmosphere, wet reflections, soft haze",
+    "camera_momentum": "slow stabilized wide drift into the home environment"
+  }
+}

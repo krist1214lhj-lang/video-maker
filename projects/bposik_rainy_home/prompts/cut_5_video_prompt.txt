@@ -1,0 +1,29 @@
+JOB: job_20260528_053519_00496cc7
+
+CUT: 5
+
+PROVIDER: replicate
+
+MODEL: kwaivgi/kling-v2.1
+
+DURATION: 3s
+
+IMAGE URL: https://discern-statute-viability.ngrok-free.dev/generated_images/cut_5.png?v=1779945998
+
+MOTION PROMPT:
+
+Character consistency: keep the same small cream/apricot toy poodle named Bposik in every cut. Maintain fluffy curly coat texture, rounded teddy-bear face, dark glossy eyes, black nose, soft floppy ears, compact body proportions, short poodle legs, and gentle curious expression. Preserve the same dog identity across wide shots, emotional close-ups, reveal shots, transitions, and ending shots. Do not change breed, fur color, facial structure, body size, ear shape, or nose/eye placement.
+CUT TYPE: ENDING
+SHOT-TYPE MOTION GRAMMAR: slow pull-back with lingering atmosphere and fade-out feeling
+Grammar camera movement: weighted dolly-back or slow zoom-out feeling, soft deceleration into final hold
+Grammar depth/parallax: space opens wider as subject settles, atmosphere continues after motion resolves
+Grammar continuity: resolve prior travel direction, reduce motion energy, preserve palette and final emotional tail
+Grammar avoid: new visual information, abrupt ending, fast retreat
+AI video motion prompt for ENDING cut. Shot-type grammar: slow pull-back with lingering atmosphere and fade-out feeling. Grammar movement: weighted dolly-back or slow zoom-out feeling, soft deceleration into final hold. Grammar depth: space opens wider as subject settles, atmosphere continues after motion resolves. Slow dolly-back from medium-wide to wide, minimal pan, optional tiny upward tilt for breathing room, soft deceleration into final hold. Subject motion: Subject slows, turns away, or becomes still before the camera retreats. Environmental/parallax motion: Room tone, haze, distant lights, rain, curtains, or exterior atmosphere continue after subject settles. Motion intensity: Low release, decelerating motion, preserve calm final readability. Transition plan: Slow fade to black after a final hold; Lateral tracking energy decelerates into a weighted dolly-back and final hold.; Moving profile space expands into a calm wide environment.. Continuity lock: Resolve previous screen direction and maintain color palette while reducing motion energy resolve prior travel direction, reduce motion energy, preserve palette and final emotional tail. Preserve screen direction, light direction, weather/atmosphere, subject identity, and depth layering. Pacing: Resolution beat with a long tail, decelerate visually into the fade. Camera speed: 0.3x closing retreat. Avoid new visual information, abrupt ending, fast retreat, jump cuts, abrupt speed ramps, warped geometry, flicker, and decorative camera motion.
+Camera movement: Slow dolly-back from medium-wide to wide, minimal pan, optional tiny upward tilt for breathing room, soft deceleration into final hold
+Subject motion: Subject slows, turns away, or becomes still before the camera retreats
+Environmental motion and parallax: Room tone, haze, distant lights, rain, curtains, or exterior atmosphere continue after subject settles
+Transition continuity: Slow fade to black after a final hold; Receives Cut 4's travel direction and resolves it into a wider final composition.; Final shot; no outgoing cut, only fade-out and emotional tail.
+Continuity lock: Resolve previous screen direction and maintain color palette while reducing motion energy
+Motion strength: Low release; camera speed: 0.3x closing retreat; pacing: Resolution beat with a long tail, decelerate visually into the fade.
+Keep screen direction, lighting, atmosphere, subject identity, and spatial depth consistent across cuts.

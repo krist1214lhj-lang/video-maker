@@ -1,0 +1,124 @@
+{
+  "kind": "full",
+  "cut_number": 0,
+  "cut_type": "FULL",
+  "provider": "mock",
+  "duration": 10.32,
+  "source_job_id": "job_20260530_073016_675f7261",
+  "source_cuts": [
+    "cut_1_mock.mp4",
+    "cut_2_mock.mp4",
+    "cut_3_mock.mp4",
+    "cut_4_mock.mp4",
+    "cut_5_mock.mp4"
+  ],
+  "timeline": [
+    {
+      "cut_number": 1,
+      "selected": true,
+      "best_shot": false,
+      "transition_type": "cut",
+      "transition_duration": 0.0,
+      "duration": 2.448,
+      "video_file": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_1_mock.mp4",
+      "previous_cut_memory": {},
+      "continuity_memory": {},
+      "source_file": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_1_mock.mp4",
+      "cut_type": "ESTABLISHING",
+      "active_character": "bposik"
+    },
+    {
+      "cut_number": 2,
+      "selected": true,
+      "best_shot": false,
+      "transition_type": "cut",
+      "transition_duration": 0.0,
+      "duration": 1.92,
+      "video_file": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_2_mock.mp4",
+      "previous_cut_memory": {},
+      "continuity_memory": {},
+      "source_file": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_2_mock.mp4",
+      "cut_type": "EMOTIONAL",
+      "active_character": "bposik"
+    },
+    {
+      "cut_number": 3,
+      "selected": true,
+      "best_shot": false,
+      "transition_type": "cut",
+      "transition_duration": 0.0,
+      "duration": 1.32,
+      "video_file": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_3_mock.mp4",
+      "previous_cut_memory": {},
+      "continuity_memory": {},
+      "source_file": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_3_mock.mp4",
+      "cut_type": "REVEAL",
+      "active_character": "bposik"
+    },
+    {
+      "cut_number": 4,
+      "selected": true,
+      "best_shot": false,
+      "transition_type": "cut",
+      "transition_duration": 0.0,
+      "duration": 2.016,
+      "video_file": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_4_mock.mp4",
+      "previous_cut_memory": {},
+      "continuity_memory": {},
+      "source_file": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_4_mock.mp4",
+      "cut_type": "TRANSITION",
+      "active_character": "bposik"
+    },
+    {
+      "cut_number": 5,
+      "selected": true,
+      "best_shot": false,
+      "transition_type": "cut",
+      "transition_duration": 0.0,
+      "duration": 2.616,
+      "video_file": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_5_mock.mp4",
+      "previous_cut_memory": {},
+      "continuity_memory": {},
+      "source_file": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_5_mock.mp4",
+      "cut_type": "ENDING",
+      "active_character": "bposik"
+    }
+  ],
+  "transition_plan": [
+    {
+      "from_cut": 1,
+      "to_cut": 2,
+      "transition_type": "cut",
+      "transition_filter": "fade",
+      "transition_duration": 0
+    },
+    {
+      "from_cut": 2,
+      "to_cut": 3,
+      "transition_type": "cut",
+      "transition_filter": "fade",
+      "transition_duration": 0
+    },
+    {
+      "from_cut": 3,
+      "to_cut": 4,
+      "transition_type": "cut",
+      "transition_filter": "fade",
+      "transition_duration": 0
+    },
+    {
+      "from_cut": 4,
+      "to_cut": 5,
+      "transition_type": "cut",
+      "transition_filter": "fade",
+      "transition_duration": 0
+    }
+  ],
+  "ffmpeg_mode": "concat",
+  "ffmpeg_filter": "[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,tpad=stop_mode=clone:stop_duration=2.448,trim=duration=2.448,setpts=PTS-STARTPTS[v0];[1:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,tpad=stop_mode=clone:stop_duration=1.92,trim=duration=1.92,setpts=PTS-STARTPTS[v1];[2:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,tpad=stop_mode=clone:stop_duration=1.32,trim=duration=1.32,setpts=PTS-STARTPTS[v2];[3:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,tpad=stop_mode=clone:stop_duration=2.016,trim=duration=2.016,setpts=PTS-STARTPTS[v3];[4:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,tpad=stop_mode=clone:stop_duration=2.616,trim=duration=2.616,setpts=PTS-STARTPTS[v4];[v0][v1][v2][v3][v4]concat=n=5:v=1:a=0[outv]",
+  "video_file": "/home/hyunjun/codex-project/projects/bposik_rainy_home/full_video/full_video.mp4",
+  "video_url": "/projects/bposik_rainy_home/full_video/full_video.mp4",
+  "project": "bposik_rest",
+  "updated_at": "2026-06-01T03:06:22.347348+00:00",
+  "latest_video_url": "/latest_videos/full_video.mp4"
+}

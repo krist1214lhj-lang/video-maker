@@ -1,0 +1,258 @@
+{
+  "project": "bposik_replicate_test2",
+  "created_at": "2026-05-29T07:37:35.709793+00:00",
+  "directories": [
+    "images",
+    "clips",
+    "final",
+    "audio",
+    "subtitles",
+    "exports"
+  ],
+  "images": [
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/images/cut_1.png",
+      "url": "/projects/bposik_replicate_test2/images/cut_1.png",
+      "description": "컷 1: 무엇이 시작될까?. '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' 스토리라인 흐름에 맞춘 establishing 장면.",
+      "provider": "openai",
+      "created_at": "2026-06-01T01:24:39.584054+00:00"
+    },
+    {
+      "cut_number": 2,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/images/cut_2.png",
+      "url": "/projects/bposik_replicate_test2/images/cut_2.png",
+      "description": "컷 2: 조금 더 다가가 보자.. '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' 스토리라인 흐름에 맞춘 emotional 장면.",
+      "provider": "openai",
+      "created_at": "2026-06-01T01:25:06.509163+00:00"
+    },
+    {
+      "cut_number": 3,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/images/cut_3.png",
+      "url": "/projects/bposik_replicate_test2/images/cut_3.png",
+      "description": "컷 3: 이제 이야기가 깊어졌다.. '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' 스토리라인 흐름에 맞춘 reveal 장면.",
+      "provider": "openai",
+      "created_at": "2026-06-01T01:25:32.379254+00:00"
+    },
+    {
+      "cut_number": 4,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/images/cut_4.png",
+      "url": "/projects/bposik_replicate_test2/images/cut_4.png",
+      "description": "컷 4: 이제 선택할 때다.. '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' 스토리라인 흐름에 맞춘 transition 장면.",
+      "provider": "openai",
+      "created_at": "2026-06-01T01:25:57.835732+00:00"
+    },
+    {
+      "cut_number": 5,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/images/cut_5.png",
+      "url": "/projects/bposik_replicate_test2/images/cut_5.png",
+      "description": "컷 5: 오늘의 이야기가 이렇게 마무리된다.. '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' 스토리라인 흐름에 맞춘 ending 장면.",
+      "provider": "openai",
+      "created_at": "2026-06-01T01:26:24.091040+00:00"
+    }
+  ],
+  "clips": [
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/clips/cut_1_replicate.mp4",
+      "url": "/projects/bposik_replicate_test2/clips/cut_1_replicate.mp4",
+      "provider": "replicate",
+      "created_at": "2026-05-29T08:10:48.750061+00:00"
+    },
+    {
+      "cut_number": 2,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/clips/cut_2_mock.mp4",
+      "url": "/projects/bposik_replicate_test2/clips/cut_2_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-06-01T02:09:53.391188+00:00"
+    },
+    {
+      "cut_number": 4,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/clips/cut_4_mock.mp4",
+      "url": "/projects/bposik_replicate_test2/clips/cut_4_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-06-01T02:09:53.658932+00:00"
+    },
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/clips/cut_1_mock.mp4",
+      "url": "/projects/bposik_replicate_test2/clips/cut_1_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-06-01T02:11:45.386280+00:00"
+    },
+    {
+      "cut_number": 3,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/clips/cut_3_mock.mp4",
+      "url": "/projects/bposik_replicate_test2/clips/cut_3_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-06-01T02:11:45.563888+00:00"
+    },
+    {
+      "cut_number": 5,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/clips/cut_5_mock.mp4",
+      "url": "/projects/bposik_replicate_test2/clips/cut_5_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-06-01T02:11:45.731167+00:00"
+    }
+  ],
+  "final_video": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/final/full_video.mp4",
+  "updated_at": "2026-06-01T02:42:35.721279+00:00",
+  "topic": "뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상",
+  "last_topic": "뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상",
+  "last_generated_at": "2026-06-01T01:26:39.904771+00:00",
+  "duration": 15,
+  "motion_prompts": [
+    {
+      "cut": 1,
+      "motion_prompt": "slow push in"
+    },
+    {
+      "cut": 2,
+      "motion_prompt": "gentle pan right"
+    },
+    {
+      "cut": 3,
+      "motion_prompt": "follow shot"
+    },
+    {
+      "cut": 4,
+      "motion_prompt": "close-up drift"
+    },
+    {
+      "cut": 5,
+      "motion_prompt": "slow pull back"
+    }
+  ],
+  "motion_selection": {
+    "1": true,
+    "2": false,
+    "3": true,
+    "4": false,
+    "5": true
+  },
+  "style": "코믹한 영상",
+  "audio": {
+    "project": "bposik_replicate_test2",
+    "provider": "openai",
+    "status": "completed",
+    "updated_at": "2026-06-01T02:11:55.148000+00:00",
+    "tracks": [
+      {
+        "cut_number": 1,
+        "text": "무엇이 시작될까?",
+        "status": "completed",
+        "provider": "openai",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/audio/narration_01.mp3",
+        "audio_url": "/projects/bposik_replicate_test2/audio/narration_01.mp3",
+        "duration_seconds": 1.968
+      },
+      {
+        "cut_number": 3,
+        "text": "이제 이야기가 깊어졌다.",
+        "status": "completed",
+        "provider": "openai",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/audio/narration_03.mp3",
+        "audio_url": "/projects/bposik_replicate_test2/audio/narration_03.mp3",
+        "duration_seconds": 2.568
+      },
+      {
+        "cut_number": 5,
+        "text": "오늘의 이야기가 이렇게 마무리된다.",
+        "status": "completed",
+        "provider": "openai",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/audio/narration_05.mp3",
+        "audio_url": "/projects/bposik_replicate_test2/audio/narration_05.mp3",
+        "duration_seconds": 3.264
+      }
+    ]
+  },
+  "subtitles": {
+    "project": "bposik_replicate_test2",
+    "provider": "mock",
+    "status": "mock_completed",
+    "updated_at": "2026-06-01T00:48:43.171451+00:00",
+    "subtitle_file": "subtitle.srt",
+    "srt_path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/subtitles/subtitle.srt",
+    "subtitle_url": "/projects/bposik_replicate_test2/subtitles/subtitle.srt",
+    "cue_count": 3,
+    "cues": [
+      {
+        "cut_number": 1,
+        "text": "'뽀식이가 간식을 발견했다'을(를) 중심으로 감성적인 영상 톤으로 짧은 이야기가 전개된다. 뽀식이의 시선을 따라 분위기가 쌓이고, 마지막 컷에서 감정이 정리된다. '뽀식이가 간식을 발견했다'의 분위기를 여는 도입 장면",
+        "start": 0.0,
+        "end": 18.168
+      },
+      {
+        "cut_number": 3,
+        "text": "감정이 은은히 드러나는 순간",
+        "start": 18.168,
+        "end": 21.12
+      },
+      {
+        "cut_number": 5,
+        "text": "여운을 남기며 마무리하는 장면",
+        "start": 21.12,
+        "end": 24.672
+      }
+    ]
+  },
+  "final_export": {
+    "project": "bposik_replicate_test2",
+    "video": "final/full_video.mp4",
+    "audio_count": 1,
+    "narration_track": "exports/narration_track.mp3",
+    "bgm": null,
+    "subtitle": "subtitles/subtitle.srt",
+    "status": "ready",
+    "output": "exports/final_export.mp4",
+    "target_duration": 15.0,
+    "per_cut_duration": 15.0,
+    "duration_seconds": 15.0,
+    "duration": "15s",
+    "resolution": "1280x720",
+    "file_size_bytes": 55181,
+    "file_size": "53.9 KB",
+    "export_logs": [
+      "Audio merged",
+      "Video merged",
+      "Subtitle burned"
+    ],
+    "probe_summary": {
+      "video_streams": 1,
+      "audio_streams": 1,
+      "subtitle_streams": 0,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac"
+        }
+      ]
+    },
+    "updated_at": "2026-06-01T02:42:35.721272+00:00",
+    "manifest_path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/exports/final_export.json",
+    "output_path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/exports/final_export.mp4",
+    "ffmpeg_command": "ffmpeg -y -i /home/hyunjun/codex-project/projects/bposik_replicate_test2/final/full_video.mp4 -i /home/hyunjun/codex-project/projects/bposik_replicate_test2/exports/narration_track.mp3 -vf subtitles=filename='/home/hyunjun/codex-project/projects/bposik_replicate_test2/subtitles/subtitle.srt' -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k /home/hyunjun/codex-project/projects/bposik_replicate_test2/exports/final_export.mp4"
+  },
+  "bgm": {
+    "status": "mock_completed",
+    "provider": "mock",
+    "mp3_path": "/home/hyunjun/codex-project/projects/bposik_replicate_test2/audio/bgm/bgm.mp3",
+    "public_url": "/bgm.mp3",
+    "mood": "gentle cinematic reflection",
+    "tempo": "74-82 BPM",
+    "instrumentation": "piano-led score with soft strings",
+    "energy": "low-medium",
+    "style_tags": [
+      "cinematic",
+      "emotional",
+      "architectural"
+    ],
+    "generated_at": "2026-06-01T02:11:55.148384+00:00"
+  }
+}

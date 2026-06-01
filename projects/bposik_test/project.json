@@ -1,0 +1,237 @@
+{
+  "project": "bposik_test",
+  "created_at": "2026-05-29T01:31:49.232329+00:00",
+  "directories": [
+    "images",
+    "clips",
+    "final"
+  ],
+  "images": [
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_test/images/cut_1.png",
+      "url": "/projects/bposik_test/images/cut_1.png",
+      "description": "영상의 분위기를 여는 도입 장면. '애견카페에서 다른 친구들과 신나게 노는 뽀식이'의 공간과 시간대가 천천히 드러난다.",
+      "provider": "openai",
+      "created_at": "2026-05-29T05:35:59.255926+00:00"
+    },
+    {
+      "cut_number": 2,
+      "path": "/home/hyunjun/codex-project/projects/bposik_test/images/cut_2.png",
+      "url": "/projects/bposik_test/images/cut_2.png",
+      "description": "주요 피사체와 주변 환경을 가까이 보여주며 감정의 방향을 만든다.",
+      "provider": "openai",
+      "created_at": "2026-05-29T05:36:25.573592+00:00"
+    },
+    {
+      "cut_number": 3,
+      "path": "/home/hyunjun/codex-project/projects/bposik_test/images/cut_3.png",
+      "url": "/projects/bposik_test/images/cut_3.png",
+      "description": "영상의 중심 장면. 주제의 핵심 정서와 상황이 가장 선명하게 표현된다.",
+      "provider": "openai",
+      "created_at": "2026-05-29T05:36:50.500105+00:00"
+    },
+    {
+      "cut_number": 4,
+      "path": "/home/hyunjun/codex-project/projects/bposik_test/images/cut_4.png",
+      "url": "/projects/bposik_test/images/cut_4.png",
+      "description": "카메라가 다른 각도로 전환되며 장면의 리듬과 여운을 확장한다.",
+      "provider": "openai",
+      "created_at": "2026-05-29T05:37:17.412369+00:00"
+    },
+    {
+      "cut_number": 5,
+      "path": "/home/hyunjun/codex-project/projects/bposik_test/images/cut_5.png",
+      "url": "/projects/bposik_test/images/cut_5.png",
+      "description": "마무리 장면. 전체 영상의 감정을 정리하고 잔잔한 결말을 만든다.",
+      "provider": "openai",
+      "created_at": "2026-05-29T05:37:48.028722+00:00"
+    }
+  ],
+  "clips": [
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_test/clips/cut_1_mock.mp4",
+      "url": "/projects/bposik_test/clips/cut_1_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-05-29T05:40:45.271232+00:00"
+    },
+    {
+      "cut_number": 3,
+      "path": "/home/hyunjun/codex-project/projects/bposik_test/clips/cut_3_mock.mp4",
+      "url": "/projects/bposik_test/clips/cut_3_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-05-29T05:40:45.445786+00:00"
+    },
+    {
+      "cut_number": 5,
+      "path": "/home/hyunjun/codex-project/projects/bposik_test/clips/cut_5_mock.mp4",
+      "url": "/projects/bposik_test/clips/cut_5_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-05-29T05:40:45.584017+00:00"
+    }
+  ],
+  "final_video": "/home/hyunjun/codex-project/projects/bposik_test/final/full_video.mp4",
+  "updated_at": "2026-05-29T08:20:03.090605+00:00",
+  "topic": "애견카페에서 다른 친구들과 신나게 노는 뽀식이",
+  "last_topic": "애견카페에서 다른 친구들과 신나게 노는 뽀식이",
+  "last_generated_at": "2026-05-29T05:40:41.333296+00:00",
+  "duration": 15,
+  "audio": {
+    "project": "bposik_test",
+    "provider": "mock",
+    "status": "mock_completed",
+    "updated_at": "2026-05-29T05:42:22.980643+00:00",
+    "tracks": [
+      {
+        "cut_number": 1,
+        "text": "이야기는 영상의 분위기를 여는 도입 장면. '애견카페에서 다른 친구들과 신나게 노는 뽀식...에서 조용히 시작된다.",
+        "status": "mock_completed",
+        "provider": "mock",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_test/audio/narration_01.mp3",
+        "audio_url": "/projects/bposik_test/audio/narration_01.mp3",
+        "duration_seconds": 3.0
+      },
+      {
+        "cut_number": 2,
+        "text": "카메라는 주요 피사체와 주변 환경을 가까이 보여주며 감정의 방향을 만든다 장면을 따라가며 분위기를 조금씩 쌓아 올린다.",
+        "status": "mock_completed",
+        "provider": "mock",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_test/audio/narration_02.mp3",
+        "audio_url": "/projects/bposik_test/audio/narration_02.mp3",
+        "duration_seconds": 3.0
+      },
+      {
+        "cut_number": 3,
+        "text": "이 순간, 영상의 중심 장면. 주제의 핵심 정서와 상황이 가장 선명하게 표현된다이 장면의 중심으로 선명하게 다가온다.",
+        "status": "mock_completed",
+        "provider": "mock",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_test/audio/narration_03.mp3",
+        "audio_url": "/projects/bposik_test/audio/narration_03.mp3",
+        "duration_seconds": 3.0
+      },
+      {
+        "cut_number": 4,
+        "text": "흐름은 카메라가 다른 각도로 전환되며 장면의 리듬과 여운을 확장한다으로 이어지며 다음 감정을 준비한다.",
+        "status": "mock_completed",
+        "provider": "mock",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_test/audio/narration_04.mp3",
+        "audio_url": "/projects/bposik_test/audio/narration_04.mp3",
+        "duration_seconds": 3.0
+      },
+      {
+        "cut_number": 5,
+        "text": "마지막으로 전체 영상의 감정을 정리하고 잔잔한 결말을 만든다이 남기고 간 여운이 화면을 채운다.",
+        "status": "mock_completed",
+        "provider": "mock",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_test/audio/narration_05.mp3",
+        "audio_url": "/projects/bposik_test/audio/narration_05.mp3",
+        "duration_seconds": 3.0
+      }
+    ]
+  },
+  "motion_prompts": [
+    {
+      "cut": 1,
+      "motion_prompt": "slow push in"
+    },
+    {
+      "cut": 2,
+      "motion_prompt": "gentle pan right"
+    },
+    {
+      "cut": 3,
+      "motion_prompt": "follow shot"
+    },
+    {
+      "cut": 4,
+      "motion_prompt": "close-up drift"
+    },
+    {
+      "cut": 5,
+      "motion_prompt": "slow pull back"
+    }
+  ],
+  "subtitles": {
+    "project": "bposik_test",
+    "provider": "mock",
+    "status": "mock_completed",
+    "updated_at": "2026-05-29T05:42:29.029959+00:00",
+    "subtitle_file": "subtitle.srt",
+    "srt_path": "/home/hyunjun/codex-project/projects/bposik_test/subtitles/subtitle.srt",
+    "subtitle_url": "/projects/bposik_test/subtitles/subtitle.srt",
+    "cue_count": 5,
+    "cues": [
+      {
+        "cut_number": 1,
+        "text": "영상의 분위기를 여는 도입 장면. '애견카페에서 다른...",
+        "start": 0.0,
+        "end": 3.0
+      },
+      {
+        "cut_number": 2,
+        "text": "주요 피사체와 주변 환경을 가까이 보여주며 감정의 방향... 순간",
+        "start": 3.0,
+        "end": 6.0
+      },
+      {
+        "cut_number": 3,
+        "text": "영상의 중심 장면. 주제의 핵심 정서와 상황이 가장 선... 장면",
+        "start": 6.0,
+        "end": 9.0
+      },
+      {
+        "cut_number": 4,
+        "text": "카메라가 다른 각도로 전환되며 장면의 리듬과 여운을 확...의 리듬",
+        "start": 9.0,
+        "end": 12.0
+      },
+      {
+        "cut_number": 5,
+        "text": "전체 영상의 감정을 정리하고 잔잔한 결말을 만든다 속으로",
+        "start": 12.0,
+        "end": 15.0
+      }
+    ]
+  },
+  "final_export": {
+    "project": "bposik_test",
+    "video": "final/full_video.mp4",
+    "audio_count": 5,
+    "narration_track": "exports/narration_track.mp3",
+    "subtitle": "subtitles/subtitle.srt",
+    "status": "ready",
+    "output": "exports/final_export.mp4",
+    "duration_seconds": 6.0,
+    "duration": "6s",
+    "resolution": "1280x720",
+    "file_size_bytes": 25788,
+    "file_size": "25.2 KB",
+    "export_logs": [
+      "Audio merged",
+      "Video merged",
+      "Subtitle burned"
+    ],
+    "probe_summary": {
+      "video_streams": 1,
+      "audio_streams": 1,
+      "subtitle_streams": 0,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac"
+        }
+      ]
+    },
+    "updated_at": "2026-05-29T08:20:03.090595+00:00",
+    "manifest_path": "projects/bposik_test/exports/final_export.json",
+    "output_path": "projects/bposik_test/exports/final_export.mp4",
+    "ffmpeg_command": "ffmpeg -y -i /home/hyunjun/codex-project/projects/bposik_test/final/full_video.mp4 -i /home/hyunjun/codex-project/projects/bposik_test/exports/narration_track.mp3 -vf subtitles='/home/hyunjun/codex-project/projects/bposik_test/subtitles/subtitle.srt' -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k -shortest /home/hyunjun/codex-project/projects/bposik_test/exports/final_export.mp4"
+  }
+}

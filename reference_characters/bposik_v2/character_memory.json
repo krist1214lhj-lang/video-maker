@@ -1,0 +1,28 @@
+{
+  "character_name": "bposik_v2",
+  "character_summary": "Bposik V2 is a small cream/apricot toy poodle with fluffy curly fur, round dark eyes, a black button nose, soft floppy ears, compact legs, and a gentle alert expression. Reference images show an indoor companion dog with a rounded teddy-bear grooming silhouette, sometimes wearing a collar or name tag.",
+  "character_prompt": "Character consistency: keep the same small cream/apricot toy poodle named Bposik V2 in every cut. Use reference character bposik_v2 as the identity anchor. tain fluffy curly coat texture, rounded teddy-bear face, dark glossy eyes, black nose, soft floppy ears, compact body proportions, short poodle legs. Preserve the same dog identity across wide shots, emotional close-ups, reveal shots, transitions, and ending shots. Do not change breed, fur color, facial structure, body size, ear shape, or nose/eye placement. Expression, gaze, ears, tail, and body pose may change per cut via the acting layer.",
+  "reference_images": [
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_01.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_02.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_03.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_04.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_05.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_06.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_07.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_08.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_09.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_10.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_11.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_12.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_13.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_14.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_15.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_16.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_17.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_18.jpg",
+    "/reference_characters/bposik_v2/KakaoTalk_20260529_162906196_19.jpg"
+  ],
+  "memory_file": "reference_characters/bposik_v2/character_memory.json"
+}

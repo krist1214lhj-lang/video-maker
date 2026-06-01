@@ -1,0 +1,47 @@
+{
+  "topic": "뽀식이의 퇴근후 루틴",
+  "style": "코믹한 영상",
+  "summary": "뽀식이는 집사가 퇴근하기를 기다리며 조용한 척하지만 사실은 계속 현관 소리에 신경을 쓴다. 집사가 돌아오자 모르는 척하다가 결국 반가움을 숨기지 못한다.",
+  "cuts": [
+    {
+      "cut_number": 1,
+      "cut_type": "ESTABLISHING",
+      "scene_description": "컷 1: 어떤 소리가 들릴까?. '뽀식이의 퇴근후 루틴' 스토리라인 흐름에 맞춘 establishing 장면.",
+      "narration": "뽀식이는 집사가 퇴근하기를 기다리며 조용한 척하지만 사실은 계속 현관 소리에 신경을 쓴다. 집사가 돌아오자 모르는 척하다가 결국 반가움을 숨기지 못한다. 어떤 소리가 들릴까?",
+      "subtitle": "어떤 소리가 들릴까?",
+      "image_prompt": "코믹한 영상, 어떤 소리가 들릴까?, topic: 뽀식이의 퇴근후 루틴, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 2,
+      "cut_type": "EMOTIONAL",
+      "scene_description": "컷 2: 문 소리가 났나?. '뽀식이의 퇴근후 루틴' 스토리라인 흐름에 맞춘 emotional 장면.",
+      "narration": "문 소리가 났나?",
+      "subtitle": "문 소리가 났나?",
+      "image_prompt": "코믹한 영상, 문 소리가 났나?, topic: 뽀식이의 퇴근후 루틴, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 3,
+      "cut_type": "REVEAL",
+      "scene_description": "컷 3: 지금인가?. '뽀식이의 퇴근후 루틴' 스토리라인 흐름에 맞춘 reveal 장면.",
+      "narration": "지금인가?",
+      "subtitle": "지금인가?",
+      "image_prompt": "코믹한 영상, 지금인가?, topic: 뽀식이의 퇴근후 루틴, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 4,
+      "cut_type": "TRANSITION",
+      "scene_description": "컷 4: 이제 다가가도 될까?. '뽀식이의 퇴근후 루틴' 스토리라인 흐름에 맞춘 transition 장면.",
+      "narration": "이제 다가가도 될까?",
+      "subtitle": "이제 다가가도 될까?",
+      "image_prompt": "코믹한 영상, 이제 다가가도 될까?, topic: 뽀식이의 퇴근후 루틴, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 5,
+      "cut_type": "ENDING",
+      "scene_description": "컷 5: 이제야 마음이 놓인다.. '뽀식이의 퇴근후 루틴' 스토리라인 흐름에 맞춘 ending 장면.",
+      "narration": "이제야 마음이 놓인다.",
+      "subtitle": "이제야 마음이 놓인다.",
+      "image_prompt": "코믹한 영상, 이제야 마음이 놓인다., topic: 뽀식이의 퇴근후 루틴, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    }
+  ]
+}

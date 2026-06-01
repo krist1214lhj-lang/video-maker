@@ -1,0 +1,15 @@
+total 52
+drwxr-xr-x 2 hyunjun hyunjun 4096 May 29 14:27 .
+drwxr-xr-x 6 hyunjun hyunjun 4096 May 29 14:25 ..
+-rw-r--r-- 1 hyunjun hyunjun 2193 May 29 14:27 manifest.json
+-rw-r--r-- 1 hyunjun hyunjun  417 May 29 14:27 narration_01.json
+-rw-r--r-- 1 hyunjun hyunjun  196 May 29 14:27 narration_01.mp3
+-rw-r--r-- 1 hyunjun hyunjun  345 May 29 14:27 narration_02.json
+-rw-r--r-- 1 hyunjun hyunjun  124 May 29 14:27 narration_02.mp3
+-rw-r--r-- 1 hyunjun hyunjun  350 May 29 14:27 narration_03.json
+-rw-r--r-- 1 hyunjun hyunjun  129 May 29 14:27 narration_03.mp3
+-rw-r--r-- 1 hyunjun hyunjun  341 May 29 14:27 narration_04.json
+-rw-r--r-- 1 hyunjun hyunjun  120 May 29 14:27 narration_04.mp3
+-rw-r--r-- 1 hyunjun hyunjun  343 May 29 14:27 narration_05.json
+-rw-r--r-- 1 hyunjun hyunjun  122 May 29 14:27 narration_05.mp3
+EXIT_CODE:0

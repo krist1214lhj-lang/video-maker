@@ -1,0 +1,29 @@
+JOB: job_20260528_052937_16ec5df1
+
+CUT: 1
+
+PROVIDER: replicate
+
+MODEL: kwaivgi/kling-v2.1
+
+DURATION: 3s
+
+IMAGE URL: https://discern-statute-viability.ngrok-free.dev/generated_images/cut_1.png?v=1779945915
+
+MOTION PROMPT:
+
+Character consistency: keep the same small cream/apricot toy poodle named Bposik in every cut. Maintain fluffy curly coat texture, rounded teddy-bear face, dark glossy eyes, black nose, soft floppy ears, compact body proportions, short poodle legs, and gentle curious expression. Preserve the same dog identity across wide shots, emotional close-ups, reveal shots, transitions, and ending shots. Do not change breed, fur color, facial structure, body size, ear shape, or nose/eye placement.
+CUT TYPE: ESTABLISHING
+SHOT-TYPE MOTION GRAMMAR: wide cinematic drift with stable slow camera and environment emphasis
+Grammar camera movement: slow stabilized wide drift, gentle dolly-in, minimal pan, no handheld shake
+Grammar depth/parallax: foreground atmospheric parallax, midground subject scale, deep background environmental movement
+Grammar continuity: establish geography, screen direction, weather, color temperature, and spatial rhythm for the next cut
+Grammar avoid: fast push, sudden reframing, aggressive subject motion
+AI video motion prompt for ESTABLISHING cut. Shot-type grammar: wide cinematic drift with stable slow camera and environment emphasis. Grammar movement: slow stabilized wide drift, gentle dolly-in, minimal pan, no handheld shake. Grammar depth: foreground atmospheric parallax, midground subject scale, deep background environmental movement. Slow diagonal dolly-in from wide to medium-wide, steadicam-stable with subtle downward tilt correction and soft inertia at start and stop. Subject motion: Subject remains small or enters slowly into the midground, no sudden gesture, movement supports the reveal. Environmental/parallax motion: Rain, haze, curtain movement, practical light flicker, and distant background activity drift at different depth speeds. Motion intensity: Low intensity, gradual reveal, avoid fast object motion or aggressive camera drift. Transition plan: Fade in from black into atmospheric establish; Dolly-in energy resolves into a closer handheld observational drift.; Wide environment compresses into a foreground-obscured medium detail plane.. Continuity lock: Preserve weather direction, color temperature, and screen direction for the next detail cut establish geography, screen direction, weather, color temperature, and spatial rhythm for the next cut. Preserve screen direction, light direction, weather/atmosphere, subject identity, and depth layering. Pacing: Opening beat with a calm inhale, gradual information reveal, no early visual climax. Camera speed: 0.35x slow cinematic drift. Avoid fast push, sudden reframing, aggressive subject motion, jump cuts, abrupt speed ramps, warped geometry, flicker, and decorative camera motion.
+Camera movement: Slow diagonal dolly-in from wide to medium-wide, steadicam-stable with subtle downward tilt correction and soft inertia at start and stop
+Subject motion: Subject remains small or enters slowly into the midground, no sudden gesture, movement supports the reveal
+Environmental motion and parallax: Rain, haze, curtain movement, practical light flicker, and distant background activity drift at different depth speeds
+Transition continuity: Fade in from black into atmospheric establish; Opening shot; establishes geography, mood, and visual grammar before any character-level detail.; Hands off to Cut 2 by pushing from broad spatial context into intimate tactile detail.
+Continuity lock: Preserve weather direction, color temperature, and screen direction for the next detail cut
+Motion strength: Low; camera speed: 0.35x slow cinematic drift; pacing: Opening beat with a calm inhale, gradual information reveal, no early visual climax.
+Keep screen direction, lighting, atmosphere, subject identity, and spatial depth consistent across cuts.

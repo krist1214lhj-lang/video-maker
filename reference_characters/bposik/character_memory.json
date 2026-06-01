@@ -1,0 +1,11 @@
+{
+  "character_name": "bposik",
+  "character_summary": "Bposik is a small cream/apricot toy poodle with fluffy curly fur, round dark eyes, a black button nose, soft floppy ears, compact legs, and a gentle alert expression. Reference images show an indoor companion dog with a rounded teddy-bear grooming silhouette, sometimes wearing a collar or name tag.",
+  "character_prompt": "Character consistency: keep the same small cream/apricot toy poodle named Bposik in every cut. Maintain fluffy curly coat texture, rounded teddy-bear face, dark glossy eyes, black nose, soft floppy ears, compact body proportions, short poodle legs, and gentle curious expression. Preserve the same dog identity across wide shots, emotional close-ups, reveal shots, transitions, and ending shots. Do not change breed, fur color, facial structure, body size, ear shape, or nose/eye placement.",
+  "reference_images": [
+    "/reference_characters/bposik/KakaoTalk_20260528_141451708_02.jpg",
+    "/reference_characters/bposik/KakaoTalk_20260528_141451708_11.jpg",
+    "/reference_characters/bposik/KakaoTalk_20260528_141451708_13.jpg"
+  ],
+  "memory_file": "reference_characters/bposik/character_memory.json"
+}

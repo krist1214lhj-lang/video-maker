@@ -1,0 +1,118 @@
+{
+  "project": "bposik_cafe_test1",
+  "topic": "뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상",
+  "duration": 20,
+  "storyline_summary": "'뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상'을(를) 코믹하게 풀어낸 (코믹한 영상+애이메이션) 가벼운 5컷 이야기.",
+  "story_arc": "도입-가식-들킴-들뜸-코믹 마무리",
+  "selected_cuts": [
+    1,
+    3,
+    5
+  ],
+  "items": [
+    {
+      "cut": 1,
+      "text": "'뽀식이가 엄마와 애견카페에 가서 좌충우돌하는…",
+      "subtitle": "'뽀식이가 엄마와 애견카페에 가서 좌충우돌하는…",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_cafe_test1/clips/cut_1_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_cafe_test1/audio/narration_01.mp3",
+      "duration": 6.667,
+      "voice_duration": 4.8
+    },
+    {
+      "cut": 3,
+      "text": "어색하게 상황을 수습하려는 몸짓",
+      "subtitle": "어색하게 상황을 수습하려는 몸짓",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_cafe_test1/clips/cut_3_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_cafe_test1/audio/narration_03.mp3",
+      "duration": 6.666,
+      "voice_duration": 2.904
+    },
+    {
+      "cut": 5,
+      "text": "마지막에 작은 실수로 웃음을 남김",
+      "subtitle": "마지막에 작은 실수로 웃음을 남김",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_cafe_test1/clips/cut_5_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_cafe_test1/audio/narration_05.mp3",
+      "duration": 6.667,
+      "voice_duration": 3.72
+    }
+  ],
+  "descriptions": [
+    {
+      "cut": 1,
+      "text": "'뽀식이가 엄마와 애견카페에 가서 좌충우돌하는…"
+    },
+    {
+      "cut": 3,
+      "text": "어색하게 상황을 수습하려는 몸짓"
+    },
+    {
+      "cut": 5,
+      "text": "마지막에 작은 실수로 웃음을 남김"
+    }
+  ],
+  "subtitles": [
+    {
+      "cut": 1,
+      "text": "'뽀식이가 엄마와 애견카페에 가서 좌충우돌하는…",
+      "start": 0.0,
+      "end": 6.667
+    },
+    {
+      "cut": 3,
+      "text": "어색하게 상황을 수습하려는 몸짓",
+      "start": 6.667,
+      "end": 13.333
+    },
+    {
+      "cut": 5,
+      "text": "마지막에 작은 실수로 웃음을 남김",
+      "start": 13.333,
+      "end": 20.0
+    }
+  ],
+  "narration": [
+    {
+      "cut": 1,
+      "text": "'뽀식이가 엄마와 애견카페에 가서 좌충우돌하는…"
+    },
+    {
+      "cut": 3,
+      "text": "어색하게 상황을 수습하려는 몸짓"
+    },
+    {
+      "cut": 5,
+      "text": "마지막에 작은 실수로 웃음을 남김"
+    }
+  ],
+  "source": "storyline",
+  "timing_plan": {
+    "target_duration": 20.0,
+    "selected_cuts": [
+      1,
+      3,
+      5
+    ],
+    "cuts": [
+      {
+        "cut": 1,
+        "start": 0.0,
+        "end": 6.667,
+        "duration": 6.667
+      },
+      {
+        "cut": 3,
+        "start": 6.667,
+        "end": 13.333,
+        "duration": 6.666
+      },
+      {
+        "cut": 5,
+        "start": 13.333,
+        "end": 20.0,
+        "duration": 6.667
+      }
+    ]
+  }
+}

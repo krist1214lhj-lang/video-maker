@@ -1,0 +1,49 @@
+{
+  "run_id": "bed7aaaead054175a30fa2e78e198bad",
+  "project": "bposik_rest",
+  "topic": "뽀식이의 퇴근후 루틴",
+  "style": "코믹한 영상",
+  "storyboard_id": "1780283964310136560:105189",
+  "selected_cuts": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "target_duration": 20.0,
+  "per_cut_duration": 4.0,
+  "video_done": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "audio_done": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "subtitle_done": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "final_export_path": "/home/hyunjun/codex-project/projects/bposik_rest/exports/final_export.mp4",
+  "final_export_url": "/projects/bposik_rest/exports/final_export.mp4",
+  "final_export_selected_cuts": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "final_duration": 20.0,
+  "job_id": "job_20260601_031938_63a5e7f7",
+  "updated_at": "2026-06-01T03:26:08.425575+00:00"
+}

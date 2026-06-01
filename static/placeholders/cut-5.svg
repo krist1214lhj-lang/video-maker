@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Cut 5 placeholder">
+  <defs>
+    <linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#0f1218"/>
+      <stop offset="0.58" stop-color="#1b202a"/>
+      <stop offset="1" stop-color="#090a0e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#g)"/>
+  <circle cx="920" cy="190" r="96" fill="#f1c76a" fill-opacity="0.28"/>
+  <rect x="180" y="180" width="920" height="320" fill="#ffffff" fill-opacity="0.055"/>
+  <path d="M160 545 H1120" stroke="#d6a64f" stroke-opacity="0.46" stroke-width="6"/>
+  <path d="M300 545 L420 365 L540 545 M720 545 L830 390 L940 545" fill="none" stroke="#f4f0e8" stroke-opacity="0.16" stroke-width="10"/>
+  <text x="90" y="610" fill="#f4f0e8" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="700">CUT 05</text>
+</svg>

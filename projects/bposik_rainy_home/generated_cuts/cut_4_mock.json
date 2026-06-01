@@ -1,0 +1,50 @@
+{
+  "kind": "cut",
+  "cut_number": 4,
+  "cut_type": "TRANSITION",
+  "visual_style_lock": {
+    "resolution_feeling": "consistent 4K upscale feeling, clean high-detail image plane, no low-resolution softness",
+    "sharpness": "same crisp but filmic sharpness on every cut, detailed fur texture, stable edges, no mushy frames",
+    "lens_style": "consistent premium cinema prime lens rendering, controlled depth of field, natural perspective continuity",
+    "color_grading": "locked 코믹한 영상+애이메이션 grade, matched contrast, black level, highlight rolloff, and saturation across all cuts",
+    "cinematic_density": "same cinematic density across all cuts: layered foreground, readable midground subject, atmospheric background, premium film still quality"
+  },
+  "action_state": "WALKING",
+  "emotion_state": "SEARCHING",
+  "motion_state": "SINGLE_DIRECTION_WALK",
+  "allowed_subject_motion": "one slow walking direction only, readable step rhythm, no sudden action change",
+  "blocked_actions": [
+    "sleeping",
+    "running sprint",
+    "jumping",
+    "lying down mid-shot"
+  ],
+  "provider": "mock",
+  "duration": 4.0,
+  "motion_grammar": {
+    "strategy": "lateral connective movement with pacing continuity",
+    "camera_movement": "smooth lateral track or pan, foreground wipe/parallax, horizon-stable counter-tilt",
+    "depth": "foreground elements pass near lens while background travels slower to connect spaces",
+    "continuity": "carry direction, energy, and emotional momentum into the ending shot",
+    "avoid": "whip pan, disconnected geography, sudden stop"
+  },
+  "active_character": "bposik",
+  "source_job_id": "job_20260601_035332_f750bc8f",
+  "source_clip_path": "/home/hyunjun/codex-project/generated_clips/job_20260601_035332_f750bc8f/cut_4_mock.mp4",
+  "source_clip_url": "/generated_clips/job_20260601_035332_f750bc8f/cut_4_mock.mp4",
+  "image_prompt": "REFERENCE CHARACTER (source CUT 1, appearance lock only): Match the reference character image at /reference_characters/current_reference.png. REFERENCE FRAME INHERITANCE (medium): preserve the same exact dog identity from the reference frame. same exact dog identity; same face shape; same eye size and position; same ear shape; same fur texture; same body proportions; same emotional expression baseline; do not change breed, age, color, face, or silhouette. Keep face, fur, ears, eyes, and body proportions consistent while updating scene and camera. Keep Character Lock identity and Scene Context atmosphere separate; only lock outward appearance. Character consistency: keep the same small cream/apricot toy poodle named Bposik in every cut. Maintain fluffy curly coat texture, rounded teddy-bear face, dark glossy eyes, black nose, soft floppy ears, compact body proportions, short poodle legs, and gentle curious expression. Preserve the same dog identity across wide shots, emotional close-ups, reveal shots, transitions, and ending shots. Do not change breed, fur color, facial structure, body size, ear shape, or nose/eye placement. MASTER CHARACTER LOCK: same character across all shots, consistent breed and body proportions, consistent face structure, fur color, ear shape, nose and eye placement, continuity locked. character_type: dog; breed: small poodle mix dog; body_size: small compact companion dog with consistent short legs and rounded body proportions; fur_color: cream/apricot curly fur with consistent coat tone across every cut; posture: gentle companion posture, readable body language, no sudden posture redesign between cuts; emotional_state: consistent emotional baseline carried across the story arc; key visual traits: consistent rounded teddy-bear poodle face, same dark glossy eyes and black button nose, consistent curly fur clumps and grooming silhouette, consistent small body proportions, stable screen direction and subject scale. SCENE CONTEXT: weather: dry clean atmosphere, no rain, no wet-fur weather effect, calm breathable air; location: environment naturally supporting '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' without forced rain or storm drama; props: topic-appropriate props only, no umbrella unless explicitly implied by the topic; lighting: 코믹한 영상+애이메이션-matched cinematic lighting with coherent color temperature for '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상'; action: natural topic-appropriate posture and gentle movement, clean dry fur presentation. CUT SCENE: 코믹한 영상+애이메이션, 생각보다 잘 풀린 듯 보이는 착각, topic: 뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text CAMERA: Profile Tracking Shot, 40mm anamorphic, Smooth lateral steadicam track parallel to subject, slow pan follows movement, slight counter-tilt keeps horizon stable, Profile tracking frame with strong horizontal travel, Streaked practical light with reflective texture. VISUAL STYLE LOCK: resolution feeling: consistent 4K upscale feeling, clean high-detail image plane, no low-resolution softness; sharpness: same crisp but filmic sharpness on every cut, detailed fur texture, stable edges, no mushy frames; lens style: consistent premium cinema prime lens rendering, controlled depth of field, natural perspective continuity; color grading: locked 코믹한 영상+애이메이션 grade, matched contrast, black level, highlight rolloff, and saturation across all cuts; cinematic density: same cinematic density across all cuts: layered foreground, readable midground subject, atmospheric background, premium film still quality Acting state: WALKING; only one slow walking direction only, readable step rhythm, no sudden action change; avoid sleeping, running sprint, jumping, lying down mid-shot.",
+  "character_lock_prompt": "Character consistency: keep the same small cream/apricot toy poodle named Bposik in every cut. Maintain fluffy curly coat texture, rounded teddy-bear face, dark glossy eyes, black nose, soft floppy ears, compact body proportions, short poodle legs, and gentle curious expression. Preserve the same dog identity across wide shots, emotional close-ups, reveal shots, transitions, and ending shots. Do not change breed, fur color, facial structure, body size, ear shape, or nose/eye placement. MASTER CHARACTER LOCK: same character across all shots, consistent breed and body proportions, consistent face structure, fur color, ear shape, nose and eye placement, continuity locked. character_type: dog; breed: small poodle mix dog; body_size: small compact companion dog with consistent short legs and rounded body proportions; fur_color: cream/apricot curly fur with consistent coat tone across every cut; posture: gentle companion posture, readable body language, no sudden posture redesign between cuts; emotional_state: consistent emotional baseline carried across the story arc; key visual traits: consistent rounded teddy-bear poodle face, same dark glossy eyes and black button nose, consistent curly fur clumps and grooming silhouette, consistent small body proportions, stable screen direction and subject scale.",
+  "scene_context_prompt": "SCENE CONTEXT: weather: dry clean atmosphere, no rain, no wet-fur weather effect, calm breathable air; location: environment naturally supporting '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상' without forced rain or storm drama; props: topic-appropriate props only, no umbrella unless explicitly implied by the topic; lighting: 코믹한 영상+애이메이션-matched cinematic lighting with coherent color temperature for '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상'; action: natural topic-appropriate posture and gentle movement, clean dry fur presentation.",
+  "continuity_constraints": {
+    "color_temperature": "코믹한 영상+애이메이션-matched cinematic lighting with coherent color temperature for '뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상'",
+    "lens_consistency": "cinematic prime lens continuity with coherent depth of field and stable filmic sharpness",
+    "camera_direction": "preserve screen direction and camera momentum between cuts",
+    "emotional_arc": "gentle curiosity and emotional clarity that resolves into quiet calm"
+  },
+  "video_file": "/home/hyunjun/codex-project/projects/bposik_rainy_home/generated_cuts/cut_4_mock.mp4",
+  "video_url": "/projects/bposik_rainy_home/generated_cuts/cut_4_mock.mp4",
+  "message": "Mock video clip completed. Playable placeholder mp4 was written to generated_clips.",
+  "project": "bposik_cafe_test1",
+  "updated_at": "2026-06-01T04:18:26.016681+00:00",
+  "latest_video_url": "/latest_videos/cut_4.mp4"
+}

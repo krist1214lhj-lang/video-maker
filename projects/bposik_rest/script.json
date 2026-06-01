@@ -1,0 +1,133 @@
+{
+  "project": "bposik_rest",
+  "topic": "뽀식이의 퇴근후 루틴",
+  "duration": 20,
+  "storyline_summary": "뽀식이는 집사가 퇴근하기를 기다리며 조용한 척하지만 사실은 계속 현관 소리에 신경을 쓴다. 집사가 돌아오자 모르는 척하다가 결국 반가움을 숨기지 못한다.",
+  "story_arc": "도입-긴장-기대-만남-안정",
+  "selected_cuts": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "items": [
+    {
+      "cut": 1,
+      "text": "어떤 소리가 들릴까?",
+      "subtitle": "어떤 소리가 들릴까?",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_1_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_01.mp3",
+      "duration": 1.848
+    },
+    {
+      "cut": 2,
+      "text": "문 소리가 났나?",
+      "subtitle": "문 소리가 났나?",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_2_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_02.mp3",
+      "duration": 2.808
+    },
+    {
+      "cut": 3,
+      "text": "지금인가?",
+      "subtitle": "지금인가?",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_3_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_03.mp3",
+      "duration": 1.968
+    },
+    {
+      "cut": 4,
+      "text": "이제 다가가도 될까?",
+      "subtitle": "이제 다가가도 될까?",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_4_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_04.mp3",
+      "duration": 2.448
+    },
+    {
+      "cut": 5,
+      "text": "이제야 마음이 놓인다.",
+      "subtitle": "이제야 마음이 놓인다.",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_5_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_05.mp3",
+      "duration": 1.92
+    }
+  ],
+  "descriptions": [
+    {
+      "cut": 1,
+      "text": "어떤 소리가 들릴까?"
+    },
+    {
+      "cut": 2,
+      "text": "문 소리가 났나?"
+    },
+    {
+      "cut": 3,
+      "text": "지금인가?"
+    },
+    {
+      "cut": 4,
+      "text": "이제 다가가도 될까?"
+    },
+    {
+      "cut": 5,
+      "text": "이제야 마음이 놓인다."
+    }
+  ],
+  "subtitles": [
+    {
+      "cut": 1,
+      "text": "어떤 소리가 들릴까?",
+      "start": 0.0,
+      "end": 4.0
+    },
+    {
+      "cut": 2,
+      "text": "문 소리가 났나?",
+      "start": 4.0,
+      "end": 8.0
+    },
+    {
+      "cut": 3,
+      "text": "지금인가?",
+      "start": 8.0,
+      "end": 12.0
+    },
+    {
+      "cut": 4,
+      "text": "이제 다가가도 될까?",
+      "start": 12.0,
+      "end": 16.0
+    },
+    {
+      "cut": 5,
+      "text": "이제야 마음이 놓인다.",
+      "start": 16.0,
+      "end": 20
+    }
+  ],
+  "narration": [
+    {
+      "cut": 1,
+      "text": "어떤 소리가 들릴까?"
+    },
+    {
+      "cut": 2,
+      "text": "문 소리가 났나?"
+    },
+    {
+      "cut": 3,
+      "text": "지금인가?"
+    },
+    {
+      "cut": 4,
+      "text": "이제 다가가도 될까?"
+    },
+    {
+      "cut": 5,
+      "text": "이제야 마음이 놓인다."
+    }
+  ],
+  "source": "storyline"
+}

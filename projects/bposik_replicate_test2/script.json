@@ -1,0 +1,45 @@
+{
+  "project": "bposik_replicate_test2",
+  "topic": "뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상",
+  "duration": 15,
+  "storyline_summary": "'뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상'을(를) 중심으로 코믹한 영상 톤으로 짧은 이야기가 전개된다. 뽀식이의 시선을 따라 분위기가 쌓이고, 마지막 컷에서 감정이 정리된다.",
+  "story_arc": "도입-전개-전환-클라이맥스-마무리",
+  "selected_cuts": [
+    1
+  ],
+  "items": [
+    {
+      "cut": 1,
+      "text": "narration 1",
+      "subtitle": "subtitle 1",
+      "duration": 15.0
+    }
+  ],
+  "descriptions": [
+    {
+      "cut": 1,
+      "text": "무엇이 시작될까?"
+    },
+    {
+      "cut": 3,
+      "text": "이제 이야기가 깊어졌다."
+    },
+    {
+      "cut": 5,
+      "text": "오늘의 이야기가 이렇게 마무리된다."
+    }
+  ],
+  "subtitles": [
+    {
+      "cut": 1,
+      "text": "subtitle 1"
+    }
+  ],
+  "narration": [
+    {
+      "cut": 1,
+      "text": "narration 1"
+    }
+  ],
+  "source": "storyline"
+}

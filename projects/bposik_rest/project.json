@@ -1,0 +1,290 @@
+{
+  "project": "bposik_rest",
+  "created_at": "2026-05-29T09:29:14.559301+00:00",
+  "directories": [
+    "images",
+    "clips",
+    "final",
+    "audio",
+    "subtitles",
+    "exports"
+  ],
+  "images": [
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/images/cut_1.png",
+      "url": "/projects/bposik_rest/images/cut_1.png",
+      "description": "영상의 분위기를 여는 도입 장면. '뽀식이의 퇴근후 루틴'의 공간과 시간대가 천천히 드러난다.",
+      "provider": "openai",
+      "created_at": "2026-06-01T03:17:41.017745+00:00"
+    },
+    {
+      "cut_number": 2,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/images/cut_2.png",
+      "url": "/projects/bposik_rest/images/cut_2.png",
+      "description": "주요 피사체와 주변 환경을 가까이 보여주며 감정의 방향을 만든다.",
+      "provider": "openai",
+      "created_at": "2026-06-01T03:18:07.590787+00:00"
+    },
+    {
+      "cut_number": 3,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/images/cut_3.png",
+      "url": "/projects/bposik_rest/images/cut_3.png",
+      "description": "영상의 중심 장면. 주제의 핵심 정서와 상황이 가장 선명하게 표현된다.",
+      "provider": "openai",
+      "created_at": "2026-06-01T03:18:36.614064+00:00"
+    },
+    {
+      "cut_number": 4,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/images/cut_4.png",
+      "url": "/projects/bposik_rest/images/cut_4.png",
+      "description": "카메라가 다른 각도로 전환되며 장면의 리듬과 여운을 확장한다.",
+      "provider": "openai",
+      "created_at": "2026-06-01T03:19:00.602396+00:00"
+    },
+    {
+      "cut_number": 5,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/images/cut_5.png",
+      "url": "/projects/bposik_rest/images/cut_5.png",
+      "description": "마무리 장면. 전체 영상의 감정을 정리하고 잔잔한 결말을 만든다.",
+      "provider": "openai",
+      "created_at": "2026-06-01T03:19:24.322474+00:00"
+    }
+  ],
+  "clips": [
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_1_replicate.mp4",
+      "url": "/projects/bposik_rest/clips/cut_1_replicate.mp4",
+      "provider": "replicate",
+      "created_at": "2026-05-29T09:41:14.035966+00:00"
+    },
+    {
+      "cut_number": 3,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_3_replicate.mp4",
+      "url": "/projects/bposik_rest/clips/cut_3_replicate.mp4",
+      "provider": "replicate",
+      "created_at": "2026-05-29T09:43:21.832231+00:00"
+    },
+    {
+      "cut_number": 5,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_5_replicate.mp4",
+      "url": "/projects/bposik_rest/clips/cut_5_replicate.mp4",
+      "provider": "replicate",
+      "created_at": "2026-05-29T09:45:30.981387+00:00"
+    },
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_1_mock.mp4",
+      "url": "/projects/bposik_rest/clips/cut_1_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-06-01T03:19:39.164122+00:00"
+    },
+    {
+      "cut_number": 2,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_2_mock.mp4",
+      "url": "/projects/bposik_rest/clips/cut_2_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-06-01T03:19:39.384649+00:00"
+    },
+    {
+      "cut_number": 3,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_3_mock.mp4",
+      "url": "/projects/bposik_rest/clips/cut_3_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-06-01T03:19:39.560374+00:00"
+    },
+    {
+      "cut_number": 4,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_4_mock.mp4",
+      "url": "/projects/bposik_rest/clips/cut_4_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-06-01T03:19:39.737089+00:00"
+    },
+    {
+      "cut_number": 5,
+      "path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_5_mock.mp4",
+      "url": "/projects/bposik_rest/clips/cut_5_mock.mp4",
+      "provider": "mock",
+      "created_at": "2026-06-01T03:19:39.919400+00:00"
+    }
+  ],
+  "final_video": "/home/hyunjun/codex-project/projects/bposik_rest/final/full_video.mp4",
+  "updated_at": "2026-06-01T03:19:54.187541+00:00",
+  "topic": "뽀식이의 퇴근후 루틴",
+  "last_topic": "뽀식이의 퇴근후 루틴",
+  "last_generated_at": "2026-06-01T03:19:38.896324+00:00",
+  "duration": 20,
+  "motion_prompts": [
+    {
+      "cut": 1,
+      "motion_prompt": "slow push in"
+    },
+    {
+      "cut": 2,
+      "motion_prompt": "gentle pan right"
+    },
+    {
+      "cut": 3,
+      "motion_prompt": "follow shot"
+    },
+    {
+      "cut": 4,
+      "motion_prompt": "close-up drift"
+    },
+    {
+      "cut": 5,
+      "motion_prompt": "slow pull back"
+    }
+  ],
+  "style": "코믹한 영상",
+  "motion_selection": {
+    "1": true,
+    "2": true,
+    "3": true,
+    "4": true,
+    "5": true
+  },
+  "audio": {
+    "project": "bposik_rest",
+    "provider": "openai",
+    "status": "completed",
+    "updated_at": "2026-06-01T03:19:48.065919+00:00",
+    "tracks": [
+      {
+        "cut_number": 1,
+        "text": "어떤 소리가 들릴까?",
+        "status": "completed",
+        "provider": "openai",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_01.mp3",
+        "audio_url": "/projects/bposik_rest/audio/narration_01.mp3",
+        "duration_seconds": 1.848
+      },
+      {
+        "cut_number": 2,
+        "text": "문 소리가 났나?",
+        "status": "completed",
+        "provider": "openai",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_02.mp3",
+        "audio_url": "/projects/bposik_rest/audio/narration_02.mp3",
+        "duration_seconds": 2.808
+      },
+      {
+        "cut_number": 3,
+        "text": "지금인가?",
+        "status": "completed",
+        "provider": "openai",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_03.mp3",
+        "audio_url": "/projects/bposik_rest/audio/narration_03.mp3",
+        "duration_seconds": 1.968
+      },
+      {
+        "cut_number": 4,
+        "text": "이제 다가가도 될까?",
+        "status": "completed",
+        "provider": "openai",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_04.mp3",
+        "audio_url": "/projects/bposik_rest/audio/narration_04.mp3",
+        "duration_seconds": 2.448
+      },
+      {
+        "cut_number": 5,
+        "text": "이제야 마음이 놓인다.",
+        "status": "completed",
+        "provider": "openai",
+        "mp3_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_05.mp3",
+        "audio_url": "/projects/bposik_rest/audio/narration_05.mp3",
+        "duration_seconds": 1.92
+      }
+    ]
+  },
+  "subtitles": {
+    "project": "bposik_rest",
+    "provider": "mock",
+    "status": "mock_completed",
+    "updated_at": "2026-06-01T00:40:10.545137+00:00",
+    "subtitle_file": "subtitle.srt",
+    "srt_path": "/home/hyunjun/codex-project/projects/bposik_rest/subtitles/subtitle.srt",
+    "subtitle_url": "/projects/bposik_rest/subtitles/subtitle.srt",
+    "cue_count": 3,
+    "cues": [
+      {
+        "cut_number": 1,
+        "text": "뽀식이는 집사가 퇴근하기를 기다리며 조용한 척하지만 사실은 계속 현관 소리에 신경을 쓴다. 집사가 돌아오자 모르는 척하다가 결국 반가움을 숨기지 못한다. 조용한 거실에서 기다리는 뽀식이",
+        "start": 0.0,
+        "end": 15.312
+      },
+      {
+        "cut_number": 3,
+        "text": "집사가 들어오자 모르는 척하는 뽀식이",
+        "start": 15.312,
+        "end": 19.128
+      },
+      {
+        "cut_number": 5,
+        "text": "소파에서 만족스럽게 쉬는 뽀식이",
+        "start": 19.128,
+        "end": 22.248
+      }
+    ]
+  },
+  "final_export": {
+    "project": "bposik_rest",
+    "video": "final/full_video.mp4",
+    "audio_count": 5,
+    "narration_track": "exports/narration_track.mp3",
+    "bgm": null,
+    "subtitle": "subtitles/subtitle.srt",
+    "status": "ready",
+    "output": "exports/final_export.mp4",
+    "target_duration": 20.0,
+    "per_cut_duration": 4.0,
+    "duration_seconds": 20.0,
+    "duration": "20s",
+    "resolution": "1280x720",
+    "file_size_bytes": 160923,
+    "file_size": "157.2 KB",
+    "export_logs": [
+      "Audio merged",
+      "Video merged",
+      "Subtitle burned"
+    ],
+    "probe_summary": {
+      "video_streams": 1,
+      "audio_streams": 1,
+      "subtitle_streams": 0,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac"
+        }
+      ]
+    },
+    "updated_at": "2026-06-01T03:19:54.187535+00:00",
+    "manifest_path": "/home/hyunjun/codex-project/projects/bposik_rest/exports/final_export.json",
+    "output_path": "/home/hyunjun/codex-project/projects/bposik_rest/exports/final_export.mp4",
+    "ffmpeg_command": "ffmpeg -y -i /home/hyunjun/codex-project/projects/bposik_rest/final/full_video.mp4 -i /home/hyunjun/codex-project/projects/bposik_rest/exports/narration_track.mp3 -vf subtitles=filename='/home/hyunjun/codex-project/projects/bposik_rest/subtitles/subtitle.srt' -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k /home/hyunjun/codex-project/projects/bposik_rest/exports/final_export.mp4"
+  },
+  "bgm": {
+    "status": "mock_completed",
+    "provider": "mock",
+    "mp3_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/bgm/bgm.mp3",
+    "public_url": "/bgm.mp3",
+    "mood": "gentle cinematic reflection",
+    "tempo": "74-82 BPM",
+    "instrumentation": "piano-led score with soft strings",
+    "energy": "low-medium",
+    "style_tags": [
+      "cinematic",
+      "emotional",
+      "architectural"
+    ],
+    "generated_at": "2026-06-01T03:19:48.066813+00:00"
+  }
+}

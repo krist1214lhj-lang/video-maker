@@ -1,0 +1,51 @@
+{
+  "kind": "cut",
+  "cut_number": 1,
+  "cut_type": "ESTABLISHING",
+  "visual_style_lock": {
+    "resolution_feeling": "consistent 4K upscale feeling, clean high-detail image plane, no low-resolution softness",
+    "sharpness": "same crisp but filmic sharpness on every cut, detailed fur texture, stable edges, no mushy frames",
+    "lens_style": "consistent premium cinema prime lens rendering, controlled depth of field, natural perspective continuity",
+    "color_grading": "locked 코믹한 영상 grade, matched contrast, black level, highlight rolloff, and saturation across all cuts",
+    "cinematic_density": "same cinematic density across all cuts: layered foreground, readable midground subject, atmospheric background, premium film still quality"
+  },
+  "action_state": "OBSERVING",
+  "emotion_state": "CURIOUS",
+  "motion_state": "MINIMAL_ATTENTION_SHIFT",
+  "allowed_subject_motion": "quiet observing pose, small gaze shift or gentle posture adjustment only",
+  "blocked_actions": [
+    "running",
+    "jumping",
+    "sleeping",
+    "playing",
+    "fast movement"
+  ],
+  "provider": "replicate",
+  "duration": 3,
+  "motion_grammar": {
+    "strategy": "wide cinematic drift with stable slow camera and environment emphasis",
+    "camera_movement": "slow stabilized wide drift, gentle dolly-in, minimal pan, no handheld shake",
+    "depth": "foreground atmospheric parallax, midground subject scale, deep background environmental movement",
+    "continuity": "establish geography, screen direction, weather, color temperature, and spatial rhythm for the next cut",
+    "avoid": "fast push, sudden reframing, aggressive subject motion"
+  },
+  "active_character": "bposik",
+  "source_job_id": "job_20260529_093903_db34295d",
+  "source_clip_path": "/home/hyunjun/codex-project/generated_clips/job_20260529_093903_db34295d/cut_1_replicate.mp4",
+  "source_clip_url": "/generated_clips/job_20260529_093903_db34295d/cut_1_replicate.mp4",
+  "image_prompt": "Character consistency: keep the same small cream/apricot toy poodle named Bposik in every cut. Maintain fluffy curly coat texture, rounded teddy-bear face, dark glossy eyes, black nose, soft floppy ears, compact body proportions, short poodle legs, and gentle curious expression. Preserve the same dog identity across wide shots, emotional close-ups, reveal shots, transitions, and ending shots. Do not change breed, fur color, facial structure, body size, ear shape, or nose/eye placement. MASTER CHARACTER LOCK: same character across all shots, consistent breed and body proportions, consistent face structure, fur color, ear shape, nose and eye placement, continuity locked. character_type: dog; breed: small poodle mix dog; body_size: small compact companion dog with consistent short legs and rounded body proportions; fur_color: cream/apricot curly fur with consistent coat tone across every cut; posture: gentle companion posture, readable body language, no sudden posture redesign between cuts; emotional_state: consistent emotional baseline carried across the story arc; key visual traits: consistent rounded teddy-bear poodle face, same dark glossy eyes and black button nose, consistent curly fur clumps and grooming silhouette, consistent small body proportions, stable screen direction and subject scale. SCENE CONTEXT: weather: dry clean atmosphere, no rain, no wet-fur weather effect, calm breathable air; location: environment naturally supporting '뽀식이의 퇴근후 루틴' without forced rain or storm drama; props: topic-appropriate props only, no umbrella unless explicitly implied by the topic; lighting: 코믹한 영상-matched cinematic lighting with coherent color temperature for '뽀식이의 퇴근후 루틴'; action: natural topic-appropriate posture and gentle movement, clean dry fur presentation. CUT SCENE: 코믹한 영상, 뽀식이의 퇴근후 루틴, establishing shot, cinematic lighting, 16:9 frame CAMERA: Establishing Wide Shot, 24mm wide angle, Slow diagonal dolly-in from wide to medium-wide, steadicam-stable with subtle downward tilt correction and soft inertia at start and stop, Wide 16:9 establishing frame with generous negative space, Soft ambient light with practical highlights. VISUAL STYLE LOCK: resolution feeling: consistent 4K upscale feeling, clean high-detail image plane, no low-resolution softness; sharpness: same crisp but filmic sharpness on every cut, detailed fur texture, stable edges, no mushy frames; lens style: consistent premium cinema prime lens rendering, controlled depth of field, natural perspective continuity; color grading: locked 코믹한 영상 grade, matched contrast, black level, highlight rolloff, and saturation across all cuts; cinematic density: same cinematic density across all cuts: layered foreground, readable midground subject, atmospheric background, premium film still quality Acting state: OBSERVING; only quiet observing pose, small gaze shift or gentle posture adjustment only; avoid running, jumping, sleeping, playing, fast movement.",
+  "character_lock_prompt": "Character consistency: keep the same small cream/apricot toy poodle named Bposik in every cut. Maintain fluffy curly coat texture, rounded teddy-bear face, dark glossy eyes, black nose, soft floppy ears, compact body proportions, short poodle legs, and gentle curious expression. Preserve the same dog identity across wide shots, emotional close-ups, reveal shots, transitions, and ending shots. Do not change breed, fur color, facial structure, body size, ear shape, or nose/eye placement. MASTER CHARACTER LOCK: same character across all shots, consistent breed and body proportions, consistent face structure, fur color, ear shape, nose and eye placement, continuity locked. character_type: dog; breed: small poodle mix dog; body_size: small compact companion dog with consistent short legs and rounded body proportions; fur_color: cream/apricot curly fur with consistent coat tone across every cut; posture: gentle companion posture, readable body language, no sudden posture redesign between cuts; emotional_state: consistent emotional baseline carried across the story arc; key visual traits: consistent rounded teddy-bear poodle face, same dark glossy eyes and black button nose, consistent curly fur clumps and grooming silhouette, consistent small body proportions, stable screen direction and subject scale.",
+  "scene_context_prompt": "SCENE CONTEXT: weather: dry clean atmosphere, no rain, no wet-fur weather effect, calm breathable air; location: environment naturally supporting '뽀식이의 퇴근후 루틴' without forced rain or storm drama; props: topic-appropriate props only, no umbrella unless explicitly implied by the topic; lighting: 코믹한 영상-matched cinematic lighting with coherent color temperature for '뽀식이의 퇴근후 루틴'; action: natural topic-appropriate posture and gentle movement, clean dry fur presentation.",
+  "continuity_constraints": {
+    "color_temperature": "코믹한 영상-matched cinematic lighting with coherent color temperature for '뽀식이의 퇴근후 루틴'",
+    "lens_consistency": "cinematic prime lens continuity with coherent depth of field and stable filmic sharpness",
+    "camera_direction": "preserve screen direction and camera momentum between cuts",
+    "emotional_arc": "gentle curiosity and emotional clarity that resolves into quiet calm"
+  },
+  "video_file": "/home/hyunjun/codex-project/projects/bposik_rainy_home/generated_cuts/cut_1_replicate.mp4",
+  "video_url": "/projects/bposik_rainy_home/generated_cuts/cut_1_replicate.mp4",
+  "message": "Replicate completed (kwaivgi/kling-v2.1:daad218feb714b03e2a1ac445986aebb9d05243cd00da2af17be2e4049f48f69) and saved cut_1_replicate.mp4 (1381805 bytes).",
+  "project": "bposik_rest",
+  "updated_at": "2026-05-29T09:41:14.035966+00:00",
+  "latest_video_url": "/latest_videos/cut_1.mp4"
+}

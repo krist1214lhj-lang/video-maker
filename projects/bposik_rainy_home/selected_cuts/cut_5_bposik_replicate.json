@@ -1,0 +1,29 @@
+{
+  "kind": "cut",
+  "collection": "selected_cuts",
+  "cut_number": 5,
+  "cut_type": "ENDING",
+  "provider": "replicate",
+  "duration": 3,
+  "active_character": "bposik",
+  "source_job_id": "job_20260528_053519_00496cc7",
+  "video_file": "projects/bposik_rainy_home/selected_cuts/cut_5_bposik_replicate.mp4",
+  "video_url": "/projects/bposik_rainy_home/selected_cuts/cut_5_bposik_replicate.mp4",
+  "message": "Preserved Bposik rainy home selected cut.",
+  "previous_cut_memory": {
+    "character_position": "Bposik in intimate medium detail plane near foreground texture",
+    "facing_direction": "small lateral or inward gaze shift, preserving previous screen direction",
+    "emotional_state": "contained vulnerability",
+    "lighting_mood": "window side light, muted rainy contrast",
+    "rain_weather_state": "rain on glass and soft room reflections continue",
+    "camera_momentum": "wide drift softens into controlled handheld push-in"
+  },
+  "continuity_memory": {
+    "character_position": "Bposik settled in midground as space opens wider",
+    "facing_direction": "still or gently turned away as camera retreats",
+    "emotional_state": "soft resolution",
+    "lighting_mood": "dim warm edge glow, calm final grade",
+    "rain_weather_state": "rain ambience continues softly into fade-ready ending",
+    "camera_momentum": "weighted dolly-back decelerates into final hold"
+  }
+}

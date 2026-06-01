@@ -1,0 +1,3 @@
+Reference Character: bposik_v2
+active image provider: OpenAI
+started_at: 2026-06-01T05:41:59.606257+00:00

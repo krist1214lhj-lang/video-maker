@@ -1,0 +1,112 @@
+{
+  "project": "bposik_replicate_test",
+  "created_at": "2026-05-29T07:02:25.901516+00:00",
+  "directories": [
+    "images",
+    "clips",
+    "final",
+    "audio",
+    "subtitles",
+    "exports"
+  ],
+  "images": [
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test/images/cut_1.png",
+      "url": "/projects/bposik_replicate_test/images/cut_1.png",
+      "description": "영상의 분위기를 여는 도입 장면. '뽀식이가 간식을 발견했다'의 공간과 시간대가 천천히 드러난다.",
+      "provider": "openai",
+      "created_at": "2026-05-29T07:33:27.799421+00:00"
+    },
+    {
+      "cut_number": 2,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test/images/cut_2.png",
+      "url": "/projects/bposik_replicate_test/images/cut_2.png",
+      "description": "주요 피사체와 주변 환경을 가까이 보여주며 감정의 방향을 만든다.",
+      "provider": "openai",
+      "created_at": "2026-05-29T07:34:10.024861+00:00"
+    },
+    {
+      "cut_number": 3,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test/images/cut_3.png",
+      "url": "/projects/bposik_replicate_test/images/cut_3.png",
+      "description": "영상의 중심 장면. 주제의 핵심 정서와 상황이 가장 선명하게 표현된다.",
+      "provider": "openai",
+      "created_at": "2026-05-29T07:34:40.881085+00:00"
+    },
+    {
+      "cut_number": 4,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test/images/cut_4.png",
+      "url": "/projects/bposik_replicate_test/images/cut_4.png",
+      "description": "카메라가 다른 각도로 전환되며 장면의 리듬과 여운을 확장한다.",
+      "provider": "openai",
+      "created_at": "2026-05-29T07:35:05.433846+00:00"
+    },
+    {
+      "cut_number": 5,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test/images/cut_5.png",
+      "url": "/projects/bposik_replicate_test/images/cut_5.png",
+      "description": "마무리 장면. 전체 영상의 감정을 정리하고 잔잔한 결말을 만든다.",
+      "provider": "openai",
+      "created_at": "2026-05-29T07:35:36.955095+00:00"
+    }
+  ],
+  "clips": [
+    {
+      "cut_number": 2,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test/clips/cut_2_replicate.mp4",
+      "url": "/projects/bposik_replicate_test/clips/cut_2_replicate.mp4",
+      "provider": "replicate",
+      "created_at": "2026-05-29T07:26:14.686479+00:00"
+    },
+    {
+      "cut_number": 1,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test/clips/cut_1_replicate.mp4",
+      "url": "/projects/bposik_replicate_test/clips/cut_1_replicate.mp4",
+      "provider": "replicate",
+      "created_at": "2026-05-29T07:28:32.476160+00:00"
+    },
+    {
+      "cut_number": 5,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test/clips/cut_5_replicate.mp4",
+      "url": "/projects/bposik_replicate_test/clips/cut_5_replicate.mp4",
+      "provider": "replicate",
+      "created_at": "2026-05-29T07:32:51.181339+00:00"
+    },
+    {
+      "cut_number": 3,
+      "path": "/home/hyunjun/codex-project/projects/bposik_replicate_test/clips/cut_3_replicate.mp4",
+      "url": "/projects/bposik_replicate_test/clips/cut_3_replicate.mp4",
+      "provider": "replicate",
+      "created_at": "2026-05-29T07:35:23.175179+00:00"
+    }
+  ],
+  "final_video": "",
+  "updated_at": "2026-05-29T07:35:36.956009+00:00",
+  "topic": "뽀식이가 간식을 발견했다",
+  "last_topic": "뽀식이가 간식을 발견했다",
+  "last_generated_at": "2026-05-29T07:35:36.955184+00:00",
+  "duration": 10,
+  "motion_prompts": [
+    {
+      "cut": 1,
+      "motion_prompt": "slow push in"
+    },
+    {
+      "cut": 2,
+      "motion_prompt": "gentle pan right"
+    },
+    {
+      "cut": 3,
+      "motion_prompt": "follow shot"
+    },
+    {
+      "cut": 4,
+      "motion_prompt": "close-up drift"
+    },
+    {
+      "cut": 5,
+      "motion_prompt": "slow pull back"
+    }
+  ]
+}

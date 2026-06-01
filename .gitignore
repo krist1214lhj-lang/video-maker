@@ -1,0 +1,42 @@
+# Environment / secrets
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Large backups
+*.tar.gz
+*.zip
+*.7z
+*.rar
+
+# Generated media / jobs
+video_jobs/
+generated_clips/
+generated_images/
+generated_outputs/
+latest_videos/
+best_shots/
+archive/
+
+# Project generated outputs
+projects/*/exports/
+projects/*/final/
+projects/*/audio/
+projects/*/subtitles/
+projects/*/clips/
+projects/*/videos/
+
+# Common large media
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.m4a
+
+# Logs
+*.log
