@@ -5,8 +5,8 @@
 
 | 항목 | 상태 |
 |------|------|
-| `main.py` | 미연결 |
-| HTTP API | 미연결 |
+| `main.py` | 미수정 (기존 프로덕션 라우트 유지) |
+| HTTP API | **개발용** `POST /agent/run-demo` (`agents/dev_api/run_demo.py`, `app_with_dev_routes:app`) |
 | UI | 미연결 |
 
 ---
@@ -154,6 +154,30 @@ assert "05_narration_subtitle" not in out.steps
 
 ```bash
 python3 -c "from importlib import import_module; print(import_module('agents.09_director_agent').example_full_pipeline_result())"
+```
+
+### HTTP 데모 API (Mock, OpenAI/Replicate 없음)
+
+서버: `python start_server.py` 또는 `uvicorn app_with_dev_routes:app --port 8011`
+
+```bash
+curl -s -X POST http://127.0.0.1:8011/agent/run-demo \
+  -H "Content-Type: application/json" \
+  -d '{"main_topic":"애견카페에서 신나게 노는 뽀식이","style":"애니메이션","duration_seconds":20,"selected_subtopic_id":"subtopic_1","selected_story_tone":"comic"}' | python3 -m json.tool
+```
+
+응답 형태:
+
+```json
+{
+  "success": true,
+  "steps": ["09_director", "01_topic", "02_story:subtopic_1", "03_character", "04_format", "05_narration_subtitle", "06_music", "07_production", "08_review"],
+  "topic": { "...": "..." },
+  "story": { "...": "..." },
+  "character": { "...": "..." },
+  "format": { "...": "..." },
+  "meta": { "mode": "mock_full_pipeline", "review_passed": true }
+}
 ```
 
 ---

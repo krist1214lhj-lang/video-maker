@@ -1,11 +1,11 @@
 """
-Agent 01 — topic_agent (Phase 3A: design only)
+Agent 01 — topic_agent (Phase 4: Mock | GPT)
 
 역할:
   - 대주제(메인 토픽) 확정·검증
   - 소주제 3개 생성 (서로 다른 각도)
 
-연결 금지 (Phase 3A):
+연결 금지:
   - main.py / FastAPI / templates
   - 다른 에이전트 HTTP 호출
 
@@ -63,6 +63,7 @@ class TopicAgentResult:
     duration_seconds: int
     cut_count: int
     subtopics: list[SubTopic]
+    selected_subtopic_id: str | None = None
     generated_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -111,11 +112,12 @@ def run_topic_agent(
     input_data: TopicAgentInput,
     *,
     generator: TopicGenerator | None = None,
+    llm_mode: str | None = None,
 ) -> TopicAgentResult:
     """
     소주제 3개를 생성한다.
 
-    Phase 3A: MockTopicGenerator만 사용. main import 금지.
+    generator 미지정 시 AGENT_LLM_MODE(mock|gpt)에 따라 MockTopicGenerator / GptTopicGenerator.
     """
     if not input_data.main_topic.strip():
         return TopicAgentResult(
@@ -128,8 +130,28 @@ def run_topic_agent(
             meta={"error": "main_topic is required"},
         )
 
-    gen = generator or MockTopicGenerator()
-    subtopics = gen.generate_subtopics(input_data)
+    from agents.llm import create_topic_generator, generator_mode_label, resolve_llm_mode
+    from agents.llm.client import LLMClientError
+
+    gen = generator or create_topic_generator(llm_mode)
+    mode_label = resolve_llm_mode(llm_mode).value
+    try:
+        subtopics = gen.generate_subtopics(input_data)
+    except LLMClientError as exc:
+        return TopicAgentResult(
+            success=False,
+            main_topic=input_data.main_topic.strip(),
+            style=input_data.style,
+            duration_seconds=input_data.duration_seconds,
+            cut_count=input_data.cut_count,
+            subtopics=[],
+            meta={
+                "error": str(exc),
+                "generator": generator_mode_label(gen),
+                "llm_mode": mode_label,
+            },
+        )
+
     if len(subtopics) != 3:
         return TopicAgentResult(
             success=False,
@@ -138,8 +160,19 @@ def run_topic_agent(
             duration_seconds=input_data.duration_seconds,
             cut_count=input_data.cut_count,
             subtopics=subtopics,
-            meta={"error": f"expected 3 subtopics, got {len(subtopics)}"},
+            meta={
+                "error": f"expected 3 subtopics, got {len(subtopics)}",
+                "generator": generator_mode_label(gen),
+                "llm_mode": mode_label,
+            },
         )
+
+    meta: dict[str, Any] = {
+        "generator": generator_mode_label(gen),
+        "llm_mode": mode_label,
+    }
+    if hasattr(gen, "last_meta"):
+        meta.update(getattr(gen, "last_meta") or {})
 
     return TopicAgentResult(
         success=True,
@@ -148,7 +181,7 @@ def run_topic_agent(
         duration_seconds=input_data.duration_seconds,
         cut_count=input_data.cut_count,
         subtopics=subtopics,
-        meta={"generator": type(gen).__name__},
+        meta=meta,
     )
 
 

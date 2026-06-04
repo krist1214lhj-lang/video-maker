@@ -1,11 +1,11 @@
 """
-Agent 02 — story_agent (Phase 3A: design only)
+Agent 02 — story_agent (Phase 4: Mock | GPT)
 
 역할:
   - 소주제 1개당 스토리 3종 생성
   - 톤: 코믹(comic) / 감성(emotional) / 반전(twist)
 
-연결 금지 (Phase 3A):
+연결 금지:
   - main.py / FastAPI / templates
 
 향후 main.py 대응 (참고만):
@@ -176,6 +176,7 @@ def run_story_agent(
     input_data: StoryAgentInput,
     *,
     generator: StoryGenerator | None = None,
+    llm_mode: str | None = None,
 ) -> StoryAgentResult:
     """소주제 1개에 대해 코믹·감성·반전 스토리 3종을 생성한다."""
     if not input_data.main_topic.strip() or not input_data.subtopic.id:
@@ -188,8 +189,27 @@ def run_story_agent(
             meta={"error": "main_topic and subtopic are required"},
         )
 
-    gen = generator or MockStoryGenerator()
-    variants = gen.generate_variants(input_data)
+    from agents.llm import create_story_generator, generator_mode_label, resolve_llm_mode
+    from agents.llm.client import LLMClientError
+
+    gen = generator or create_story_generator(llm_mode)
+    mode_label = resolve_llm_mode(llm_mode).value
+    try:
+        variants = gen.generate_variants(input_data)
+    except LLMClientError as exc:
+        return StoryAgentResult(
+            success=False,
+            main_topic=input_data.main_topic.strip(),
+            subtopic_id=input_data.subtopic.id,
+            subtopic_title=input_data.subtopic.title,
+            variants=[],
+            meta={
+                "error": str(exc),
+                "generator": generator_mode_label(gen),
+                "llm_mode": mode_label,
+            },
+        )
+
     expected_tones = {StoryTone.COMIC, StoryTone.EMOTIONAL, StoryTone.TWIST}
     if {v.tone for v in variants} != expected_tones:
         return StoryAgentResult(
@@ -198,8 +218,19 @@ def run_story_agent(
             subtopic_id=input_data.subtopic.id,
             subtopic_title=input_data.subtopic.title,
             variants=variants,
-            meta={"error": "variants must include comic, emotional, twist"},
+            meta={
+                "error": "variants must include comic, emotional, twist",
+                "generator": generator_mode_label(gen),
+                "llm_mode": mode_label,
+            },
         )
+
+    meta: dict[str, Any] = {
+        "generator": generator_mode_label(gen),
+        "llm_mode": mode_label,
+    }
+    if hasattr(gen, "last_meta"):
+        meta.update(getattr(gen, "last_meta") or {})
 
     return StoryAgentResult(
         success=True,
@@ -207,7 +238,7 @@ def run_story_agent(
         subtopic_id=input_data.subtopic.id,
         subtopic_title=input_data.subtopic.title,
         variants=variants,
-        meta={"generator": type(gen).__name__},
+        meta=meta,
     )
 
 

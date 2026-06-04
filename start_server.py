@@ -52,7 +52,7 @@ if __name__ == "__main__":
     t.start()
 
     uvicorn.run(
-        "main:app",
+        "app_with_dev_routes:app",
         host="127.0.0.1",
         port=8011,
         reload=True,

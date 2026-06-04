@@ -17,7 +17,7 @@ Agent 09 — director_agent (Phase 3A-3: design only)
 from __future__ import annotations
 
 import importlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -54,6 +54,18 @@ ReviewAgentInput = _review_mod.ReviewAgentInput
 ReviewAgentResult = _review_mod.ReviewAgentResult
 ProductionResultSnapshot = _review_mod.ProductionResultSnapshot
 SubTopic = _topic_mod.SubTopic
+
+DEFAULT_SUBTOPIC_ID = "subtopic_1"
+
+
+def _resolve_selected_subtopic_id(requested: str | None) -> str:
+    """요청값이 없거나 공백이면 subtopic_1."""
+    trimmed = (requested or "").strip()
+    return trimmed or DEFAULT_SUBTOPIC_ID
+
+
+def _find_subtopic(subtopics: list[SubTopic], subtopic_id: str) -> SubTopic | None:
+    return next((s for s in subtopics if s.id == subtopic_id), None)
 
 
 class DirectorStep(str, Enum):
@@ -185,18 +197,35 @@ def _run_topic_story_phase(
     if not topic_result.success:
         return None, _fail(main_topic=input_data.main_topic, steps=steps, failed_at=DirectorStep.TOPIC, topic_result=topic_result)
 
-    subtopics = list(topic_result.subtopics)
-    if input_data.selected_subtopic_id:
-        subtopics = [s for s in subtopics if s.id == input_data.selected_subtopic_id]
-        if not subtopics:
-            return None, _fail(
-                main_topic=topic_result.main_topic,
-                steps=steps,
-                failed_at=DirectorStep.TOPIC,
-                topic_result=topic_result,
-                extra_meta={"error": "unknown subtopic"},
-            )
+    effective_subtopic_id = _resolve_selected_subtopic_id(input_data.selected_subtopic_id)
+    input_data.selected_subtopic_id = effective_subtopic_id
 
+    active_subtopic = _find_subtopic(topic_result.subtopics, effective_subtopic_id)
+    topic_result = replace(topic_result, selected_subtopic_id=effective_subtopic_id)
+
+    if active_subtopic is None:
+        return None, _fail(
+            main_topic=topic_result.main_topic,
+            steps=steps,
+            failed_at=DirectorStep.TOPIC,
+            topic_result=topic_result,
+            extra_meta={
+                "error": "unknown subtopic",
+                "selected_subtopic_id": effective_subtopic_id,
+            },
+        )
+
+    if not topic_result.selected_subtopic_id:
+        return None, _fail(
+            main_topic=topic_result.main_topic,
+            steps=steps,
+            failed_at=DirectorStep.TOPIC,
+            topic_result=topic_result,
+            selected_subtopic=active_subtopic,
+            extra_meta={"error": "missing selected_subtopic_id on topic"},
+        )
+
+    subtopics = [active_subtopic]
     bundles: list[SubTopicStoryBundle] = []
     for subtopic in subtopics:
         story_result = _story_mod.run_story_agent(
@@ -215,6 +244,7 @@ def _run_topic_story_phase(
                 steps=steps + [DirectorStep.STORY.value],
                 failed_at=DirectorStep.STORY,
                 topic_result=topic_result,
+                selected_subtopic=active_subtopic,
                 bundles=bundles,
                 extra_meta={"subtopic_id": subtopic.id},
             )
