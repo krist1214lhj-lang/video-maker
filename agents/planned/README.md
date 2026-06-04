@@ -1,13 +1,13 @@
-# planned/ — 에이전트 슬롯 (01~04, 06, 08)
-
-아직 **별도 `.py` 구현이 없습니다.** 로직은 `main.py`·`audio_pipeline` 등에 있습니다.
+# planned/ — 에이전트 슬롯 (06, 08)
 
 | ID | 이름 | 비고 |
 |----|------|------|
-| 01 | topic_agent | 주제 생성 |
-| 02 | story_agent | 스토리 대본 |
-| 03 | character_agent | 캐릭터·레퍼런스 |
-| 04 | format_agent | 출력 포맷 |
+| 01 | topic_agent | **Phase 3A-2** → [../01_topic_agent.py](../01_topic_agent.py) (main 미연결) |
+| 02 | story_agent | **Phase 3A-2** → [../02_story_agent.py](../02_story_agent.py) (main 미연결) |
+| 03 | character_agent | **Phase 3A-2** → [../03_character_agent.py](../03_character_agent.py) (main 미연결) |
+| 04 | format_agent | **Phase 3A-2** → [../04_format_agent.py](../04_format_agent.py) (main 미연결) |
+| 09 | director (기획) | **Phase 3A-2** → [../09_director_agent.py](../09_director_agent.py) — 01→04, [DIRECTOR_PIPELINE.md](../../docs/agents/DIRECTOR_PIPELINE.md) |
+| 09 | director (후반) | 구현 → [../post_production/director.py](../post_production/director.py) |
 | 06 | music_agent | BGM (`audio_pipeline/bgm_generator.py`) |
 | 08 | review_agent | 결과 검증 |
 
