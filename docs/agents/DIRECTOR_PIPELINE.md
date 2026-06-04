@@ -1,7 +1,7 @@
-# Planning Director 파이프라인 (Phase 3A-2)
+# Planning Director 파이프라인 (Phase 3A-3)
 
-**기획 Director** (`agents/09_director_agent.py`) — 전반부 기획 오케스트레이션.  
-**후반 Director** (`agents/post_production/director.py`) — 05→07 전용 (별개).
+**기획·제작 Director** (`agents/09_director_agent.py`) — 01→08 Mock 오케스트레이션.  
+**후반 Director** (`agents/post_production/director.py`) — main.py 연결 실구현 (별개).
 
 | 항목 | 상태 |
 |------|------|
@@ -11,7 +11,7 @@
 
 ---
 
-## 호출 순서
+## 최종 호출 흐름
 
 ```mermaid
 flowchart TD
@@ -20,8 +20,12 @@ flowchart TD
     S["02 Story"]
     C["03 Character"]
     F["04 Format"]
+    N["05 NarrationSubtitle"]
+    M["06 Music"]
+    P["07 Production"]
+    R["08 Review"]
 
-    D --> T --> S --> C --> F
+    D --> T --> S --> C --> F --> N --> M --> P --> R
 ```
 
 ```
@@ -34,156 +38,133 @@ flowchart TD
 03 Character
    ↓
 04 Format
+   ↓
+05 NarrationSubtitle
+   ↓
+06 Music
+   ↓
+07 Production
+   ↓
+08 Review
 ```
+
+| 함수 | 범위 |
+|------|------|
+| `run_full_pipeline()` | 01 → 08 (Phase 3A-3 기본) |
+| `run_planning_pipeline()` | 01 → 04 만 |
+| `run_topic_story_pipeline()` | 01 → 02 만 |
 
 ---
 
 ## 단계별 입·출력
 
-### 03 Character (`run_character_agent`)
+### 05 NarrationSubtitle
 
-| 구분 | 필드 |
-|------|------|
-| **입력** | `topic`, `story` (`StoryContext`), `reference_character` (`ReferenceCharacter` — `reference_characters/{name}/`) |
-| **출력** | `character_profile`, `character_prompt`, `visual_constraints` |
+| | |
+|---|---|
+| 입력 | `story`, `tone`, `format` |
+| 출력 | `narration_script`, `subtitle_script`, `voice_style` |
 
-### 04 Format (`run_format_agent`)
+### 06 Music
 
-| 구분 | 필드 |
-|------|------|
-| **입력** | `story`, `target_platform`, `duration_seconds` |
-| **출력** | `format_plan`, `recommended_cut_count`, `aspect_ratio` |
+| | |
+|---|---|
+| 입력 | `story`, `emotion`, `duration_seconds` |
+| 출력 | `music_style`, `bpm`, `music_prompt` |
 
-지원 `format_plan.format`: `shorts`, `long_video`, `slideshow`, `cartoon`, `card_news`
+### 07 Production
+
+| | |
+|---|---|
+| 입력 | `storyboard`, `narration`, `subtitle`, `music`, `format` |
+| 출력 | `production_plan`, `render_plan` |
+
+### 08 Review
+
+| | |
+|---|---|
+| 입력 | `production_result` (`ProductionResultSnapshot`) |
+| 검증 | 캐릭터 일관성, 자막·음성 존재, 길이, 출력 형식 |
+| 출력 | `review_report`, `retry_target_agent` |
+
+`retry_target_agent`: `03_character`, `05_narration_subtitle`, `06_music`, `07_production`, `04_format`, 또는 빈 문자열(통과)
+
+### 03 · 04 (Phase 3A-2)
+
+| 에이전트 | 입력 | 출력 |
+|----------|------|------|
+| 03 Character | `topic`, `story`, `reference_character` | `character_profile`, `character_prompt`, `visual_constraints` |
+| 04 Format | `story`, `target_platform`, `duration_seconds` | `format_plan`, `recommended_cut_count`, `aspect_ratio` |
 
 ---
 
 ## 호출 순서 예제
 
-### 전체 기획 파이프라인 (09 → 01 → 02 → 03 → 04)
+### 전체 파이프라인 (01 → 08)
 
 ```python
 from importlib import import_module
 
 director = import_module("agents.09_director_agent")
-char = import_module("agents.03_character_agent")
 story = import_module("agents.02_story_agent")
 
-result = director.run_planning_pipeline(
+result = director.run_full_pipeline(
     director.PlanningDirectorInput(
         main_topic="애견카페에서 다른 친구들과 신나게 노는 뽀식이",
         style="애니메이션",
         duration_seconds=20,
         cut_count=5,
+        project_slug="bposik_demo",
         selected_subtopic_id="subtopic_1",
         selected_story_tone=story.StoryTone.COMIC,
-        reference_character=char.ReferenceCharacter(name="bposik_v2"),
         target_platform="youtube_shorts",
     )
 )
 
-assert result.success
 assert result.steps == [
     "09_director",
     "01_topic",
     "02_story:subtopic_1",
     "03_character",
     "04_format",
+    "05_narration_subtitle",
+    "06_music",
+    "07_production",
+    "08_review",
 ]
 
-cr = result.character_result
-assert cr.character_profile is not None
-assert cr.character_prompt
-assert cr.visual_constraints is not None
-
-fr = result.format_result
-assert fr.format_plan is not None
-assert fr.recommended_cut_count == fr.format_plan.recommended_cut_count
-assert fr.aspect_ratio == fr.format_plan.aspect_ratio
+assert result.narration_result and result.narration_result.narration_script
+assert result.music_result and result.music_result.bpm > 0
+assert result.production_result and result.production_result.render_plan
+assert result.review_result and result.review_result.review_report
+print(result.meta.get("retry_target_agent"))  # "" if passed
 ```
 
-### 단계별 직접 호출 (Director 없이)
-
-```python
-from importlib import import_module
-
-topic_mod = import_module("agents.01_topic_agent")
-story_mod = import_module("agents.02_story_agent")
-char_mod = import_module("agents.03_character_agent")
-fmt_mod = import_module("agents.04_format_agent")
-
-# 01 Topic
-tr = topic_mod.run_topic_agent(
-    topic_mod.TopicAgentInput(main_topic="비 오는 날 창가", style="감성", duration_seconds=20)
-)
-
-# 02 Story
-sr = story_mod.run_story_agent(
-    story_mod.StoryAgentInput(
-        main_topic=tr.main_topic,
-        subtopic=tr.subtopics[0],
-        style=tr.style,
-        duration_seconds=tr.duration_seconds,
-        cut_count=tr.cut_count,
-    )
-)
-
-ctx = char_mod.StoryContext.from_variant(
-    main_topic=tr.main_topic,
-    subtopic_id=tr.subtopics[0].id,
-    subtopic_title=tr.subtopics[0].title,
-    variant=sr.variants[0],
-    cut_count=tr.cut_count,
-)
-
-# 03 Character
-cr = char_mod.run_character_agent(
-    char_mod.CharacterAgentInput(
-        topic=tr.main_topic,
-        story=ctx,
-        reference_character=char_mod.ReferenceCharacter(name="bposik_v2"),
-    )
-)
-
-# 04 Format
-fr = fmt_mod.run_format_agent(
-    fmt_mod.FormatAgentInput(
-        story=ctx,
-        target_platform="youtube_shorts",
-        duration_seconds=tr.duration_seconds,
-    )
-)
-
-print(cr.character_profile.character_name, fr.aspect_ratio, fr.recommended_cut_count)
-```
-
-### Phase 3A 호환 (01 → 02 만)
+### 기획만 (01 → 04)
 
 ```python
 from importlib import import_module
 
 d = import_module("agents.09_director_agent")
-out = d.run_topic_story_pipeline(
-    d.PlanningDirectorInput(main_topic="테스트 주제", duration_seconds=15)
-)
-# steps: 09_director, 01_topic, 02_story:subtopic_1 (03·04 없음)
+out = d.run_planning_pipeline(d.PlanningDirectorInput(main_topic="테스트 주제"))
+assert "05_narration_subtitle" not in out.steps
 ```
 
 ### 원라인 스모크
 
 ```bash
-python3 -c "from importlib import import_module; print(import_module('agents.09_director_agent').example_planning_result())"
+python3 -c "from importlib import import_module; print(import_module('agents.09_director_agent').example_full_pipeline_result())"
 ```
 
 ---
 
 ## 모듈 경로
 
-| ID | 파일 |
-|----|------|
-| 01 | `agents/01_topic_agent.py` |
-| 02 | `agents/02_story_agent.py` |
-| 03 | `agents/03_character_agent.py` |
-| 04 | `agents/04_format_agent.py` |
-| 09 (기획) | `agents/09_director_agent.py` |
-| 09 (후반) | `agents/post_production/director.py` |
+| ID | Mock (Phase 3A) | Phase 1 실구현 |
+|----|-----------------|----------------|
+| 05 | `agents/05_narration_subtitle_agent.py` | `agents/post_production/narration_subtitle.py` |
+| 06 | `agents/06_music_agent.py` | (향후 `audio_pipeline/bgm_generator`) |
+| 07 | `agents/07_production_agent.py` | `agents/post_production/production.py` |
+| 08 | `agents/08_review_agent.py` | (예정) |
+| 09 기획 | `agents/09_director_agent.py` | — |
+| 09 후반 | — | `agents/post_production/director.py` |

@@ -69,7 +69,7 @@
 | 07 | `post_production/production.py` | `export_agent` | timeline 검증 후 `final_export`만 |
 | 09 | `post_production/director.py` | `pipeline_director` | audio만 / export만 / generate-all 순서 |
 
-01~04는 **Phase 3A-2** Mock 모듈([agents/README.md](agents/README.md), [docs/agents/DIRECTOR_PIPELINE.md](docs/agents/DIRECTOR_PIPELINE.md)) — `main.py` 미연결. 06·08은 [agents/planned/README.md](agents/planned/README.md) 슬롯만 있고 로직은 `main.py` 등에 남아 있다.
+01~08·09(기획)는 **Phase 3A-3** Mock 모듈([agents/README.md](agents/README.md), [docs/agents/DIRECTOR_PIPELINE.md](docs/agents/DIRECTOR_PIPELINE.md)) — `run_full_pipeline()` 01→08, `main.py` 미연결. Phase 1 후반(05·07·09) 실구현은 `agents/post_production/` + shim.
 
 **HTTP API (에이전트)**
 
