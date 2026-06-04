@@ -130,11 +130,12 @@ def run_topic_agent(
             meta={"error": "main_topic is required"},
         )
 
-    from agents.llm import create_topic_generator, generator_mode_label, resolve_llm_mode
-    from agents.llm.client import LLMClientError
+    from agents.llm.openai_client import LLMClientError
+    from agents.llm.topic_generator import create_topic_generator, generator_mode_label
 
-    gen = generator or create_topic_generator(llm_mode)
-    mode_label = resolve_llm_mode(llm_mode).value
+    gen, resolved = create_topic_generator(llm_mode)
+    if generator is not None:
+        gen = generator
     try:
         subtopics = gen.generate_subtopics(input_data)
     except LLMClientError as exc:
@@ -147,8 +148,10 @@ def run_topic_agent(
             subtopics=[],
             meta={
                 "error": str(exc),
-                "generator": generator_mode_label(gen),
-                "llm_mode": mode_label,
+                "generator": generator_mode_label(gen, resolved=resolved),
+                "llm_mode": resolved.mode.value,
+                "llm_mode_requested": resolved.requested.value,
+                "llm_fallback_reason": resolved.fallback_reason,
             },
         )
 
@@ -162,14 +165,18 @@ def run_topic_agent(
             subtopics=subtopics,
             meta={
                 "error": f"expected 3 subtopics, got {len(subtopics)}",
-                "generator": generator_mode_label(gen),
-                "llm_mode": mode_label,
+                "generator": generator_mode_label(gen, resolved=resolved),
+                "llm_mode": resolved.mode.value,
+                "llm_mode_requested": resolved.requested.value,
+                "llm_fallback_reason": resolved.fallback_reason,
             },
         )
 
     meta: dict[str, Any] = {
-        "generator": generator_mode_label(gen),
-        "llm_mode": mode_label,
+        "generator": generator_mode_label(gen, resolved=resolved),
+        "llm_mode": resolved.mode.value,
+        "llm_mode_requested": resolved.requested.value,
+        "llm_fallback_reason": resolved.fallback_reason,
     }
     if hasattr(gen, "last_meta"):
         meta.update(getattr(gen, "last_meta") or {})

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -15,16 +16,31 @@ DEFAULT_TOPIC_MODEL = "gpt-4o-mini"
 DEFAULT_STORY_MODEL = "gpt-4o-mini"
 
 
-def resolve_llm_mode(raw: str | None = None) -> AgentLLMMode:
-    """
-    AGENT_LLM_MODE 환경 변수: mock | gpt (기본 mock).
+@dataclass(frozen=True)
+class ResolvedLLMMode:
+    """요청 모드 + 실제 사용 모드 (키 없으면 mock fallback)."""
 
-    raw 인자가 있으면 env보다 우선 (테스트·주입용).
-    """
+    mode: AgentLLMMode
+    requested: AgentLLMMode
+    fallback_reason: str | None = None
+
+
+def resolve_llm_mode(raw: str | None = None) -> AgentLLMMode:
     value = (raw or os.getenv("AGENT_LLM_MODE") or "mock").strip().lower()
     if value in ("gpt", "openai", "llm"):
         return AgentLLMMode.GPT
     return AgentLLMMode.MOCK
+
+
+def resolve_effective_llm_mode(raw: str | None = None) -> ResolvedLLMMode:
+    requested = resolve_llm_mode(raw)
+    if requested == AgentLLMMode.GPT and not openai_api_key():
+        return ResolvedLLMMode(
+            mode=AgentLLMMode.MOCK,
+            requested=requested,
+            fallback_reason="missing_openai_api_key",
+        )
+    return ResolvedLLMMode(mode=requested, requested=requested)
 
 
 def resolve_topic_model() -> str:

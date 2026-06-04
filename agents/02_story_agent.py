@@ -61,9 +61,11 @@ class StoryVariant:
     id: str
     tone: StoryTone
     title: str
-    summary: str
-    story_arc: str
+    logline: str
+    narration_outline: str
     cut_flow: tuple[StoryCutBeat, ...]
+    summary: str = ""
+    story_arc: str = ""
 
 
 @dataclass
@@ -76,6 +78,40 @@ class StoryAgentInput:
     duration_seconds: int = 15
     cut_count: int = 5
     project_slug: str = ""
+    selected_subtopic_id: str | None = None
+    selected_story_tone: StoryTone | None = None
+    topic_result: Any | None = None
+
+    @classmethod
+    def from_topic_selection(
+        cls,
+        *,
+        topic_result: Any,
+        selected_subtopic_id: str | None = None,
+        selected_story_tone: StoryTone | None = None,
+        project_slug: str = "",
+    ) -> StoryAgentInput:
+        """Director·run-demo: topic_result + 선택 소주제로 입력 구성."""
+        sid = (
+            (selected_subtopic_id or "").strip()
+            or (getattr(topic_result, "selected_subtopic_id", None) or "").strip()
+            or "subtopic_1"
+        )
+        subtopic = next(
+            (s for s in topic_result.subtopics if s.id == sid),
+            topic_result.subtopics[0],
+        )
+        return cls(
+            main_topic=topic_result.main_topic,
+            subtopic=subtopic,
+            style=topic_result.style,
+            duration_seconds=topic_result.duration_seconds,
+            cut_count=topic_result.cut_count,
+            project_slug=project_slug,
+            selected_subtopic_id=sid,
+            selected_story_tone=selected_story_tone,
+            topic_result=topic_result,
+        )
 
 
 @dataclass
@@ -152,24 +188,39 @@ class MockStoryGenerator:
         for tone in (StoryTone.COMIC, StoryTone.EMOTIONAL, StoryTone.TWIST):
             label = tone.label_ko
             cut_flow = _default_cut_beats(st.title, tone, cut_count)
+            logline = {
+                StoryTone.COMIC: "도입-가식-들킴-들뜸-코믹 마무리",
+                StoryTone.EMOTIONAL: "고요-공감-몰입-위로-여운",
+                StoryTone.TWIST: "평온-의심-단서-반전-재해석",
+            }[tone]
+            outline = (
+                f"'{topic}'을(를) {label} 톤으로 푼 "
+                f"({style}) {cut_count}컷 이야기."
+            )
             variants.append(
                 StoryVariant(
                     id=f"story_{st.id}_{tone.value}",
                     tone=tone,
                     title=f"{label}형 · {st.title}",
-                    summary=(
-                        f"'{topic}'을(를) {label} 톤으로 푼 "
-                        f"({style}) {cut_count}컷 이야기."
-                    ),
-                    story_arc={
-                        StoryTone.COMIC: "도입-가식-들킴-들뜸-코믹 마무리",
-                        StoryTone.EMOTIONAL: "고요-공감-몰입-위로-여운",
-                        StoryTone.TWIST: "평온-의심-단서-반전-재해석",
-                    }[tone],
+                    logline=logline,
+                    narration_outline=outline,
+                    summary=outline,
+                    story_arc=logline,
                     cut_flow=cut_flow,
                 )
             )
         return variants
+
+
+def _coerce_story_input(input_data: StoryAgentInput) -> StoryAgentInput:
+    if input_data.topic_result is None:
+        return input_data
+    return StoryAgentInput.from_topic_selection(
+        topic_result=input_data.topic_result,
+        selected_subtopic_id=input_data.selected_subtopic_id,
+        selected_story_tone=input_data.selected_story_tone,
+        project_slug=input_data.project_slug,
+    )
 
 
 def run_story_agent(
@@ -179,34 +230,38 @@ def run_story_agent(
     llm_mode: str | None = None,
 ) -> StoryAgentResult:
     """소주제 1개에 대해 코믹·감성·반전 스토리 3종을 생성한다."""
-    if not input_data.main_topic.strip() or not input_data.subtopic.id:
+    coerced = _coerce_story_input(input_data)
+    if not coerced.main_topic.strip() or not coerced.subtopic.id:
         return StoryAgentResult(
             success=False,
-            main_topic=input_data.main_topic,
-            subtopic_id=input_data.subtopic.id,
-            subtopic_title=input_data.subtopic.title,
+            main_topic=coerced.main_topic,
+            subtopic_id=coerced.subtopic.id,
+            subtopic_title=coerced.subtopic.title,
             variants=[],
             meta={"error": "main_topic and subtopic are required"},
         )
 
-    from agents.llm import create_story_generator, generator_mode_label, resolve_llm_mode
-    from agents.llm.client import LLMClientError
+    from agents.llm.openai_client import LLMClientError
+    from agents.llm.story_generator import create_story_generator, generator_mode_label
 
-    gen = generator or create_story_generator(llm_mode)
-    mode_label = resolve_llm_mode(llm_mode).value
+    gen, resolved = create_story_generator(llm_mode)
+    if generator is not None:
+        gen = generator
     try:
-        variants = gen.generate_variants(input_data)
+        variants = gen.generate_variants(coerced)
     except LLMClientError as exc:
         return StoryAgentResult(
             success=False,
-            main_topic=input_data.main_topic.strip(),
-            subtopic_id=input_data.subtopic.id,
-            subtopic_title=input_data.subtopic.title,
+            main_topic=coerced.main_topic.strip(),
+            subtopic_id=coerced.subtopic.id,
+            subtopic_title=coerced.subtopic.title,
             variants=[],
             meta={
                 "error": str(exc),
-                "generator": generator_mode_label(gen),
-                "llm_mode": mode_label,
+                "generator": generator_mode_label(gen, resolved=resolved),
+                "llm_mode": resolved.mode.value,
+                "llm_mode_requested": resolved.requested.value,
+                "llm_fallback_reason": resolved.fallback_reason,
             },
         )
 
@@ -214,29 +269,37 @@ def run_story_agent(
     if {v.tone for v in variants} != expected_tones:
         return StoryAgentResult(
             success=False,
-            main_topic=input_data.main_topic.strip(),
-            subtopic_id=input_data.subtopic.id,
-            subtopic_title=input_data.subtopic.title,
+            main_topic=coerced.main_topic.strip(),
+            subtopic_id=coerced.subtopic.id,
+            subtopic_title=coerced.subtopic.title,
             variants=variants,
             meta={
                 "error": "variants must include comic, emotional, twist",
-                "generator": generator_mode_label(gen),
-                "llm_mode": mode_label,
+                "generator": generator_mode_label(gen, resolved=resolved),
+                "llm_mode": resolved.mode.value,
+                "llm_mode_requested": resolved.requested.value,
+                "llm_fallback_reason": resolved.fallback_reason,
             },
         )
 
     meta: dict[str, Any] = {
-        "generator": generator_mode_label(gen),
-        "llm_mode": mode_label,
+        "generator": generator_mode_label(gen, resolved=resolved),
+        "llm_mode": resolved.mode.value,
+        "llm_mode_requested": resolved.requested.value,
+        "llm_fallback_reason": resolved.fallback_reason,
+        "selected_subtopic_id": coerced.selected_subtopic_id,
+        "selected_story_tone": (
+            coerced.selected_story_tone.value if coerced.selected_story_tone else None
+        ),
     }
     if hasattr(gen, "last_meta"):
         meta.update(getattr(gen, "last_meta") or {})
 
     return StoryAgentResult(
         success=True,
-        main_topic=input_data.main_topic.strip(),
-        subtopic_id=input_data.subtopic.id,
-        subtopic_title=input_data.subtopic.title,
+        main_topic=coerced.main_topic.strip(),
+        subtopic_id=coerced.subtopic.id,
+        subtopic_title=coerced.subtopic.title,
         variants=variants,
         meta=meta,
     )
@@ -271,8 +334,10 @@ def example_story_result() -> dict[str, Any]:
                 "tone": v.tone.value,
                 "tone_label_ko": v.tone.label_ko,
                 "title": v.title,
-                "summary": v.summary,
-                "story_arc": v.story_arc,
+                "logline": v.logline,
+                "narration_outline": v.narration_outline,
+                "summary": v.summary or v.narration_outline,
+                "story_arc": v.story_arc or v.logline,
                 "cut_flow": [beat.__dict__ for beat in v.cut_flow],
             }
             for v in story_result.variants

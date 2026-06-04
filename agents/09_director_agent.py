@@ -55,13 +55,11 @@ ReviewAgentResult = _review_mod.ReviewAgentResult
 ProductionResultSnapshot = _review_mod.ProductionResultSnapshot
 SubTopic = _topic_mod.SubTopic
 
-DEFAULT_SUBTOPIC_ID = "subtopic_1"
-
-
-def _resolve_selected_subtopic_id(requested: str | None) -> str:
-    """요청값이 없거나 공백이면 subtopic_1."""
-    trimmed = (requested or "").strip()
-    return trimmed or DEFAULT_SUBTOPIC_ID
+from agents.subtopic_selection import (
+    DEFAULT_SUBTOPIC_ID,
+    resolve_selected_subtopic_id,
+    subtopic_selection_meta,
+)
 
 
 def _find_subtopic(subtopics: list[SubTopic], subtopic_id: str) -> SubTopic | None:
@@ -139,6 +137,26 @@ class _TopicStoryPhase:
     active_subtopic: SubTopic
     story_ctx: StoryContext
     bundles: list[SubTopicStoryBundle]
+    subtopic_auto_selected: bool = False
+    requested_subtopic_id: str | None = None
+
+
+def _merge_llm_meta(
+    meta: dict[str, Any],
+    *,
+    topic_result: TopicAgentResult | None = None,
+    story_bundles: list[SubTopicStoryBundle] | None = None,
+) -> dict[str, Any]:
+    from agents.llm.pipeline_meta import build_pipeline_llm_meta
+
+    merged = dict(meta)
+    merged.update(
+        build_pipeline_llm_meta(
+            topic_result=topic_result,
+            story_bundles=story_bundles,
+        )
+    )
+    return merged
 
 
 def _fail(
@@ -160,6 +178,7 @@ def _fail(
     meta = {"failed_at": failed_at.value}
     if extra_meta:
         meta.update(extra_meta)
+    meta = _merge_llm_meta(meta, topic_result=topic_result, story_bundles=bundles)
     return PlanningDirectorResult(
         success=False,
         main_topic=main_topic,
@@ -197,9 +216,12 @@ def _run_topic_story_phase(
     if not topic_result.success:
         return None, _fail(main_topic=input_data.main_topic, steps=steps, failed_at=DirectorStep.TOPIC, topic_result=topic_result)
 
-    effective_subtopic_id = _resolve_selected_subtopic_id(input_data.selected_subtopic_id)
+    requested_subtopic_id = input_data.selected_subtopic_id
+    effective_subtopic_id, subtopic_auto_selected = resolve_selected_subtopic_id(
+        requested_subtopic_id,
+        topic_result.subtopics,
+    )
     input_data.selected_subtopic_id = effective_subtopic_id
-
     active_subtopic = _find_subtopic(topic_result.subtopics, effective_subtopic_id)
     topic_result = replace(topic_result, selected_subtopic_id=effective_subtopic_id)
 
@@ -210,31 +232,19 @@ def _run_topic_story_phase(
             failed_at=DirectorStep.TOPIC,
             topic_result=topic_result,
             extra_meta={
-                "error": "unknown subtopic",
+                "error": "no subtopics from topic agent",
                 "selected_subtopic_id": effective_subtopic_id,
             },
-        )
-
-    if not topic_result.selected_subtopic_id:
-        return None, _fail(
-            main_topic=topic_result.main_topic,
-            steps=steps,
-            failed_at=DirectorStep.TOPIC,
-            topic_result=topic_result,
-            selected_subtopic=active_subtopic,
-            extra_meta={"error": "missing selected_subtopic_id on topic"},
         )
 
     subtopics = [active_subtopic]
     bundles: list[SubTopicStoryBundle] = []
     for subtopic in subtopics:
         story_result = _story_mod.run_story_agent(
-            StoryAgentInput(
-                main_topic=topic_result.main_topic,
-                subtopic=subtopic,
-                style=topic_result.style,
-                duration_seconds=topic_result.duration_seconds,
-                cut_count=topic_result.cut_count,
+            StoryAgentInput.from_topic_selection(
+                topic_result=topic_result,
+                selected_subtopic_id=subtopic.id,
+                selected_story_tone=input_data.selected_story_tone,
                 project_slug=input_data.project_slug,
             )
         )
@@ -278,8 +288,18 @@ def _run_topic_story_phase(
             active_subtopic=active_subtopic,
             story_ctx=story_ctx,
             bundles=bundles,
+            subtopic_auto_selected=subtopic_auto_selected,
+            requested_subtopic_id=requested_subtopic_id,
         ),
         None,
+    )
+
+
+def _subtopic_meta_from_phase(phase: _TopicStoryPhase) -> dict[str, Any]:
+    return subtopic_selection_meta(
+        requested=phase.requested_subtopic_id,
+        effective_id=phase.topic_result.selected_subtopic_id or phase.active_subtopic.id,
+        auto_selected=phase.subtopic_auto_selected,
     )
 
 
@@ -375,13 +395,18 @@ def run_planning_pipeline(input_data: PlanningDirectorInput) -> PlanningDirector
         character_result=character_result,
         format_result=format_result,
         steps=steps,
-        meta={
-            "mode": "planning_only",
-            "selected_story_tone": input_data.selected_story_tone.value,
-            "format": format_result.format_plan.format.value if format_result.format_plan else None,
-            "recommended_cut_count": format_result.recommended_cut_count,
-            "aspect_ratio": format_result.aspect_ratio,
-        },
+        meta=_merge_llm_meta(
+            {
+                "mode": "planning_only",
+                "selected_story_tone": input_data.selected_story_tone.value,
+                "format": format_result.format_plan.format.value if format_result.format_plan else None,
+                "recommended_cut_count": format_result.recommended_cut_count,
+                "aspect_ratio": format_result.aspect_ratio,
+                **_subtopic_meta_from_phase(phase),
+            },
+            topic_result=topic_result,
+            story_bundles=bundles,
+        ),
     )
 
 
@@ -515,15 +540,21 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
         production_result=production_result,
         review_result=review_result,
         steps=steps,
-        meta={
-            "mode": "full",
-            "selected_story_tone": input_data.selected_story_tone.value,
-            "format": plan.format.value,
-            "review_passed": review_passed,
-            "retry_target_agent": review_result.retry_target_agent.value,
-            "recommended_cut_count": format_result.recommended_cut_count,
-            "aspect_ratio": format_result.aspect_ratio,
-        },
+        meta=_merge_llm_meta(
+            {
+                "mode": "full",
+                "selected_story_tone": input_data.selected_story_tone.value,
+                "format": plan.format.value,
+                "review_passed": review_passed,
+                "retry_target_agent": review_result.retry_target_agent.value,
+                "recommended_cut_count": format_result.recommended_cut_count,
+                "aspect_ratio": format_result.aspect_ratio,
+                "auto_selected_subtopic_id": pre.meta.get("auto_selected_subtopic_id"),
+                "selected_subtopic_id": pre.meta.get("selected_subtopic_id"),
+            },
+            topic_result=topic_result,
+            story_bundles=pre.story_bundles,
+        ),
     )
 
 
@@ -544,8 +575,18 @@ def run_topic_story_pipeline(input_data: PlanningDirectorInput) -> PlanningDirec
         selected_subtopic=phase.active_subtopic,
         selected_story=phase.story_ctx,
         story_bundles=phase.bundles,
+        character_result=None,
+        format_result=None,
         steps=phase.steps,
-        meta={"mode": "topic_story_only", "selected_story_tone": input_data.selected_story_tone.value},
+        meta=_merge_llm_meta(
+            {
+                "mode": "topic_story_only",
+                "selected_story_tone": input_data.selected_story_tone.value,
+                **_subtopic_meta_from_phase(phase),
+            },
+            topic_result=phase.topic_result,
+            story_bundles=phase.bundles,
+        ),
     )
 
 

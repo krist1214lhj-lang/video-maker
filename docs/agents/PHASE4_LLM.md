@@ -1,24 +1,20 @@
-# Phase 4 — 01·02 LLM 생성기 (Mock | GPT)
+# Phase 4A — 01·02 LLM 생성기 (Mock | GPT)
 
-`main.py`·UI·영상 생성 **미연결**. Director `run_full_pipeline()`은 기존처럼 `run_topic_agent` / `run_story_agent`만 호출하며, 환경 변수로 Mock/GPT가 결정된다.
+`main.py`·UI·영상 생성 **미연결**. `AGENT_LLM_MODE=gpt` 이어도 **API 키 없으면 자동 mock fallback**.
 
 ---
 
-## 1. 클래스 구조
+## 1. 클래스 구조 (Phase 4A)
 
 ```text
 agents/
 ├── 01_topic_agent.py          # TopicAgentInput/Result, MockTopicGenerator, run_topic_agent()
 ├── 02_story_agent.py          # StoryAgentInput/Result, MockStoryGenerator, run_story_agent()
 └── llm/
-    ├── config.py              # AgentLLMMode, resolve_llm_mode(), 모델명
-    ├── client.py              # LLMClient (Protocol), OpenAIChatClient, LLMClientError
-    ├── prompts.py             # topic/story 시스템·유저 프롬프트
-    ├── parsers.py             # GPT JSON → SubTopic / StoryVariant
-    ├── json_utils.py          # JSON 추출
-    ├── topic_gpt.py           # GptTopicGenerator
-    ├── story_gpt.py           # GptStoryGenerator
-    └── factory.py             # create_topic_generator(), create_story_generator()
+    ├── config.py              # resolve_effective_llm_mode() — 키 없으면 mock
+    ├── openai_client.py       # OpenAIChatClient, parse_json_object
+    ├── topic_generator.py     # GptTopicGenerator, create_topic_generator()
+    └── story_generator.py     # GptStoryGenerator, create_story_generator()
 ```
 
 | 계층 | 역할 |
@@ -123,6 +119,11 @@ OPENAI_API_KEY=sk-...
 # 선택
 AGENT_LLM_MODEL=gpt-4o-mini
 ```
+
+### API 키 없을 때 (자동 fallback)
+
+`AGENT_LLM_MODE=gpt` 이지만 `OPENAI_API_KEY`가 비어 있으면 **MockTopicGenerator / MockStoryGenerator** 로 동작한다.  
+응답 `meta` 예: `llm_mode: "mock"`, `llm_mode_requested: "gpt"`, `llm_fallback_reason: "missing_openai_api_key"`.
 
 ### 코드에서 명시 (테스트·스크립트)
 

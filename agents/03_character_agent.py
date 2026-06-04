@@ -80,8 +80,8 @@ class StoryContext:
             subtopic_title=subtopic_title,
             tone=variant.tone,
             title=variant.title,
-            summary=variant.summary,
-            story_arc=variant.story_arc,
+            summary=variant.narration_outline or variant.summary,
+            story_arc=variant.logline or variant.story_arc,
             cut_count=cut_count,
         )
 

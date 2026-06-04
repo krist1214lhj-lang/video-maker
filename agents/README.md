@@ -2,14 +2,15 @@
 
 에이전트 모듈 루트. 자동 체인은 **Director(09)** 만 연결 (`AGENT.md` §3).
 
-## Phase 4 — 01·02 Mock | GPT (main/API/UI 미연결)
+## Phase 4A — 01·02 Mock | GPT (main/API/UI 미연결)
 
 | 문서 | 내용 |
 |------|------|
-| [docs/agents/PHASE4_LLM.md](../docs/agents/PHASE4_LLM.md) | 클래스 구조, I/O, `AGENT_LLM_MODE`, 비용 |
+| [docs/agents/PHASE4_LLM.md](../docs/agents/PHASE4_LLM.md) | I/O, `AGENT_LLM_MODE`, API 키 fallback, 비용 |
 
-- `agents/llm/` — `OpenAIChatClient`, `GptTopicGenerator`, `GptStoryGenerator`
-- 기본 `AGENT_LLM_MODE=mock` — 기존 Director·run-demo 동작 유지
+- `agents/llm/` — `openai_client.py`, `topic_generator.py`, `story_generator.py`
+- 기본 `AGENT_LLM_MODE=mock` — `run-demo` 성공 흐름 유지
+- `gpt` + 키 없음 → 자동 mock (`llm_fallback_reason`)
 
 ## Phase 3A-3 — 전체 Mock 파이프라인 (main/API/UI 미연결)
 

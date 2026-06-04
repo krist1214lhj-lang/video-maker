@@ -16,6 +16,8 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from agents.subtopic_selection import is_auto_select_subtopic_id
+
 _director_mod = importlib.import_module("agents.09_director_agent")
 _story_mod = importlib.import_module("agents.02_story_agent")
 _char_mod = importlib.import_module("agents.03_character_agent")
@@ -33,7 +35,10 @@ class AgentRunDemoRequest(BaseModel):
     cut_count: int = Field(5, ge=1, le=30)
     project_slug: str = ""
     locale: str = "ko"
-    selected_subtopic_id: str | None = None
+    selected_subtopic_id: str | None = Field(
+        default=None,
+        description="비우거나 string/subtopic1 이면 첫 소주제(subtopic_1) 자동 선택",
+    )
     selected_story_tone: str = Field("comic", description="comic | emotional | twist")
     reference_character_name: str = "bposik_v2"
     target_platform: str = "youtube_shorts"
@@ -98,6 +103,8 @@ def _story_payload(result: Any) -> dict[str, Any]:
         "subtopic_title": ctx.subtopic_title,
         "tone": ctx.tone.value,
         "title": ctx.title,
+        "logline": getattr(ctx, "logline", None) or ctx.story_arc,
+        "narration_outline": getattr(ctx, "narration_outline", None) or ctx.summary,
         "summary": ctx.summary,
         "story_arc": ctx.story_arc,
         "cut_count": ctx.cut_count,
@@ -132,13 +139,54 @@ def _format_payload(result: Any) -> dict[str, Any]:
     }
 
 
-def _normalize_subtopic_id(raw: str | None) -> str | None:
-    trimmed = (raw or "").strip()
-    return trimmed or None
+def _demo_meta(
+    pipeline_result: Any,
+    *,
+    requested_subtopic_id: str | None = None,
+) -> dict[str, Any]:
+    from agents.llm.pipeline_meta import build_pipeline_llm_meta
+
+    base: dict[str, Any] = {
+        "mode": "mock_full_pipeline",
+        "failed_at": pipeline_result.meta.get("failed_at"),
+        "review_passed": (
+            pipeline_result.review_result.review_report.passed
+            if pipeline_result.review_result and pipeline_result.review_result.review_report
+            else None
+        ),
+        "retry_target_agent": (
+            pipeline_result.review_result.retry_target_agent.value
+            if pipeline_result.review_result
+            else None
+        ),
+    }
+    base.update(
+        build_pipeline_llm_meta(
+            topic_result=pipeline_result.topic_result,
+            story_bundles=pipeline_result.story_bundles,
+        )
+    )
+    director_meta = pipeline_result.meta or {}
+    effective = director_meta.get("selected_subtopic_id")
+    if effective is None and pipeline_result.topic_result:
+        tr = pipeline_result.topic_result
+        effective = tr.selected_subtopic_id or (
+            pipeline_result.selected_subtopic.id
+            if pipeline_result.selected_subtopic
+            else None
+        )
+    auto = director_meta.get("auto_selected_subtopic_id")
+    if auto is None:
+        auto = is_auto_select_subtopic_id(requested_subtopic_id)
+    if effective:
+        base["selected_subtopic_id"] = effective
+    base["auto_selected_subtopic_id"] = bool(auto)
+    return base
 
 
 def run_demo_pipeline(body: AgentRunDemoRequest) -> dict[str, Any]:
     """Director 09 → 01…08 (Mock only)."""
+    requested_subtopic_id = body.selected_subtopic_id
     pipeline_result = run_full_pipeline(
         PlanningDirectorInput(
             main_topic=body.main_topic.strip(),
@@ -147,7 +195,7 @@ def run_demo_pipeline(body: AgentRunDemoRequest) -> dict[str, Any]:
             cut_count=body.cut_count,
             project_slug=body.project_slug,
             locale=body.locale,
-            selected_subtopic_id=_normalize_subtopic_id(body.selected_subtopic_id),
+            selected_subtopic_id=requested_subtopic_id,
             selected_story_tone=_parse_story_tone(body.selected_story_tone),
             reference_character=ReferenceCharacter(name=body.reference_character_name.strip()),
             target_platform=body.target_platform,
@@ -160,20 +208,10 @@ def run_demo_pipeline(body: AgentRunDemoRequest) -> dict[str, Any]:
         "story": _story_payload(pipeline_result),
         "character": _character_payload(pipeline_result),
         "format": _format_payload(pipeline_result),
-        "meta": {
-            "mode": "mock_full_pipeline",
-            "failed_at": pipeline_result.meta.get("failed_at"),
-            "review_passed": (
-                pipeline_result.review_result.review_report.passed
-                if pipeline_result.review_result and pipeline_result.review_result.review_report
-                else None
-            ),
-            "retry_target_agent": (
-                pipeline_result.review_result.retry_target_agent.value
-                if pipeline_result.review_result
-                else None
-            ),
-        },
+        "meta": _demo_meta(
+            pipeline_result,
+            requested_subtopic_id=requested_subtopic_id,
+        ),
     }
 
 
