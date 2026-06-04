@@ -113,7 +113,7 @@ class GptTopicGenerator:
             raise LLMClientError(f"topic JSON parse failed: {exc}") from exc
         object.__setattr__(
             self,
-            "last_meta",
+            "_last_meta",
             {
                 "llm_model": result.model,
                 "llm_usage": result.usage,

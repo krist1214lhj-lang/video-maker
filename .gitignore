@@ -27,6 +27,8 @@ projects/*/audio/
 projects/*/subtitles/
 projects/*/clips/
 projects/*/videos/
+projects/*/current_run.json
+projects/*/current_scenario.json
 
 # Common large media
 *.mp4
