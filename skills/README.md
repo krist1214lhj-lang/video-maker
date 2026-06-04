@@ -25,3 +25,4 @@
 |------|------|
 | 스토리→영상 흐름 | [create_story_video.md](create_story_video.md) |
 | 새 에이전트 추가 | [create_agent.md](create_agent.md) |
+| 안전 폴더 정리 (Phase 2) | [safe_layout_cleanup.md](safe_layout_cleanup.md) |

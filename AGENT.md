@@ -59,15 +59,17 @@
 
 자동 실행 체인은 **반드시 09 Director**를 통해서만 연결한다. 개별 에이전트가 다른 에이전트 API를 직접 호출하지 않는다.
 
-### 3.2 현재 구현 (1단계 — 후반작업 분리)
+### 3.2 현재 구현 (Phase 1 — 후반작업 분리)
 
-`agents/` 패키지에 **후반작업만** 먼저 분리되어 있다.
+구현 본문은 `agents/post_production/`에 있고, `main.py`는 **레거시 shim** 경로를 그대로 import한다.
 
-| 파일 | 대응 에이전트 | 역할 |
-|------|----------------|------|
-| `agents/audio_subtitle_agent.py` | 05 narration_subtitle | voice + subtitle만. **export import·호출 금지** |
-| `agents/export_agent.py` | 07 production (export) | timeline 검증 후 `final_export`만 |
-| `agents/pipeline_director.py` | 09 director (부분) | 버튼별 흐름: audio만 / export만 / generate-all 순서 |
+| ID | 구현 (canonical) | `main.py` import (shim) | 역할 |
+|----|------------------|-------------------------|------|
+| 05 | `post_production/narration_subtitle.py` | `audio_subtitle_agent` | voice + subtitle만. **export import·호출 금지** |
+| 07 | `post_production/production.py` | `export_agent` | timeline 검증 후 `final_export`만 |
+| 09 | `post_production/director.py` | `pipeline_director` | audio만 / export만 / generate-all 순서 |
+
+01~04, 06, 08은 [agents/planned/README.md](agents/planned/README.md) 슬롯만 있고 로직은 `main.py` 등에 남아 있다.
 
 **HTTP API (에이전트)**
 
@@ -112,14 +114,16 @@
 
 ---
 
-## 5. 스킬·문서 구조 (Phase 0~1)
+## 5. 스킬·문서 구조 (Phase 1)
 
 | 영역 | 경로 | 설명 |
 |------|------|------|
 | 작업 기준 | `AGENT.md` | 이 문서 |
+| 구조 로드맵 | [docs/STRUCTURE.md](docs/STRUCTURE.md) | AUTO_VIDEO_MAKER 목표 vs 현재 (URL·outputs 미변경) |
+| 에이전트 맵 | [agents/README.md](agents/README.md) | 01~09 파일 배치 |
 | 스킬 인덱스 | [skills/README.md](skills/README.md) | 실행 가이드 목록 |
 | 문서 인덱스 | [docs/README.md](docs/README.md) | Hermes 등 보조 문서 |
-| 백업 | [backup/README.md](backup/README.md) | temp·archive·스냅샷 보관 |
+| 백업 | [backup/README.md](backup/README.md) | temp·archive_runs·스냅샷 보관 |
 
 ### skills/
 
@@ -133,6 +137,7 @@
 | Generate Video 디버그 | [skills/debug_generate_video.md](skills/debug_generate_video.md) |
 | 새 에이전트 추가 | [skills/create_agent.md](skills/create_agent.md) |
 | 스토리→영상 흐름 | [skills/create_story_video.md](skills/create_story_video.md) |
+| 안전 폴더 정리 | [skills/safe_layout_cleanup.md](skills/safe_layout_cleanup.md) |
 
 에이전트는 작업 전 **skills/README.md** + 이 `AGENT.md`를 참고한다.
 
@@ -163,7 +168,8 @@
 - [ ] Audio+Subtitle 버튼이 agent audio-subtitle API만 호출
 - [ ] Export 버튼만 export agent API 호출
 - [ ] Generate All이 `pipeline_director`만으로 후반+export 연결
-- [ ] 01~09 번호 에이전트가 `agents/`로 점진 이전 (2단계 이후)
+- [x] 05·07·09 구현이 `agents/post_production/`에 배치 (shim으로 `main.py` 무변경)
+- [ ] 01~04, 06, 08이 `agents/planned/`에서 실제 모듈로 이전 (Phase 3+)
 
 ---
 
@@ -211,23 +217,30 @@ WSL에서 Windows Cursor로 연 경우에도 경로·포트 규칙은 동일하�
 
 ---
 
-## 9. 폴더 레이아웃 (Phase 0~1 정리 후)
+## 9. 폴더 레이아웃 (Phase 1 정리 후)
 
 ```text
 codex-project/
 ├── AGENT.md, README.md, main.py, start_server.py
 ├── agent.md                 # stub → skills/debug_generate_video.md
-├── agents/                  # 코드 (이동 없음)
-├── skills/                  # 실행 가이드
-├── docs/                    # 문서 인덱스·Hermes 복사본
+├── agents/
+│   ├── post_production/     # 05, 07, 09 구현
+│   ├── planned/             # 01~04, 06, 08 슬롯 (문서)
+│   └── *_agent.py           # main.py용 레거시 shim
+├── skills/, docs/           # STRUCTURE.md, safe_layout_cleanup.md 포함
 ├── backup/
-│   ├── temp_files/          # 루트 임시 파일 보관
-│   ├── old_versions/archive/  # 구 archive/
-│   └── snapshots/           # 세션·Phase 인벤토리
+│   ├── temp_files/
+│   ├── old_versions/archive/
+│   ├── archive_runs/        # 루트 archive/cleanup_* 보관
+│   └── snapshots/
+├── archive/                 # main.py ARCHIVE_DIR (런타임, 비어 있어도 됨)
 ├── templates/, static/      # 변경 없음
+├── image_providers/, video_providers/, audio_pipeline/, video_editor/
 ├── projects/, reference_characters/
-└── (generated_*, video_jobs, latest_videos … 루트 유지)
+└── generated_*, video_jobs/, latest_videos/   # 루트 유지 (outputs 통합은 미승인)
 ```
+
+상세 목표 구조: [docs/STRUCTURE.md](docs/STRUCTURE.md)
 
 ## 참고 파일
 
@@ -235,10 +248,13 @@ codex-project/
 |------|------|
 | `main.py` | FastAPI 라우트·프로젝트 파이프라인 |
 | `templates/index.html` | 버튼·fetch guard·후반작업 UI |
-| `agents/*.py` | 1단계 후반작업 에이전트 |
+| `agents/post_production/*.py` | 05·07·09 구현 |
+| `agents/*_agent.py` | `main.py`용 shim |
 | `README.md` | 설치·환경변수·엔드포인트 |
+| `docs/STRUCTURE.md` | AUTO_VIDEO_MAKER 로드맵 |
 | `skills/debug_generate_video.md` | Generate Video 디버그 (구 `agent.md` 본문) |
-| `backup/snapshots/PHASE0-2026-06-03-inventory.md` | Phase 0~1 이동 기록 |
+| `backup/snapshots/PHASE0-2026-06-03-inventory.md` | Phase 0 이동 기록 |
+| `backup/snapshots/PHASE2-2026-06-03-layout.md` | Phase 1 agents/docs 정리 기록 |
 | `.cursor/rules/resume-session.mdc` | 세션 재개 메모 |
 
 문서와 코드가 어긋나면 **코드 동작을 우선** 확인한 뒤, 이 `AGENT.md`를 갱신한다.

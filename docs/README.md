@@ -9,6 +9,8 @@
 | [../AGENT.md](../AGENT.md) | 작업 원칙·에이전트·버튼 규칙 (필수) |
 | [../README.md](../README.md) | 설치·환경변수·API |
 | [../skills/README.md](../skills/README.md) | 자주 쓰는 작업 스킬 |
+| [STRUCTURE.md](STRUCTURE.md) | AUTO_VIDEO_MAKER 목표 구조 vs 현재 (문서만) |
+| [agents/README.md](agents/README.md) | 에이전트 01~09 맵 |
 | [agents/hermes.md](agents/hermes.md) | Hermes 코드 검사 에이전트 (`.agents/hermes.md` 복사본) |
 
 ## 디버그

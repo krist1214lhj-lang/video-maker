@@ -8,10 +8,17 @@
 | 경로 | 용도 |
 |------|------|
 | `temp_files/` | 세션 덤프, WSL 테스트 출력, 일회성 셸 스크립트 |
-| `old_versions/` | 이전 `archive/` 등 구버전 데이터 |
-| `snapshots/` | 세션 메모·Phase 인벤토리 복사본 |
+| `old_versions/` | Phase 0에서 옮긴 구 `archive/` 트리 |
+| `archive_runs/` | 루트 `archive/cleanup_*` 런타임 보관 (이동만, 삭제 없음) |
+| `snapshots/` | 세션 메모·Phase 인벤토리 |
 
-## 주의
+## archive 정리 원칙
 
-- `main.py`의 `ARCHIVE_DIR`는 아직 루트 `archive/`를 가리킵니다 (Phase 2에서 정리 예정).
-- 루트에 `archive/`가 비어 있으면 서버 실행 시 자동 생성될 수 있습니다.
+- **삭제 금지** — `backup/`으로만 이동.
+- 루트 `archive/` 폴더는 `main.py`의 `ARCHIVE_DIR` 때문에 **남겨 둠** (비어 있어도 됨).
+- 새 cleanup 실행 시에도 서버는 루트 `archive/`에 쓸 수 있음. 이후 수동으로 `archive_runs/`로 옮기면 됨.
+
+## 스냅샷
+
+- [snapshots/PHASE0-2026-06-03-inventory.md](snapshots/PHASE0-2026-06-03-inventory.md)
+- [snapshots/PHASE2-2026-06-03-layout.md](snapshots/PHASE2-2026-06-03-layout.md)
