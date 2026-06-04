@@ -1,16 +1,22 @@
 {
-  "run_id": "2d31fb365eec4d25861836fdd89c012a",
+  "run_id": "78834f09b9404eadbf95fe87d41a52d9",
   "project": "bposik_rainy_home",
   "topic": "애견카페에서 다른 친구들과 신나게 노는 뽀식이",
   "style": "코믹한영상+애니메이션",
-  "storyboard_id": "1780292652550231884:198558",
+  "storyboard_id": "1780361869602796557:1205904",
   "selected_cuts": [
     1,
+    2,
     3,
-    5
+    4,
+    5,
+    7,
+    8,
+    10
   ],
-  "target_duration": 20.0,
-  "per_cut_duration": 6.667,
+  "cut_count": 10,
+  "target_duration": 30.0,
+  "per_cut_duration": 3.75,
   "video_done": [],
   "audio_done": [],
   "subtitle_done": [],
@@ -19,5 +25,5 @@
   "final_export_selected_cuts": [],
   "final_duration": 0,
   "job_id": "",
-  "updated_at": "2026-06-01T05:48:04.378819+00:00"
+  "updated_at": "2026-06-02T01:48:01.153636+00:00"
 }

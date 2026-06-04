@@ -1,0 +1,24 @@
+{
+  "run_id": "43c095ceed8b4101b3199a032ff66b17",
+  "project": "bposik_v2_test",
+  "topic": "비 오는 날 애견카페에 간 뽀식이",
+  "style": "",
+  "storyboard_id": "1780036040923278213:106207",
+  "selected_cuts": [
+    1,
+    3,
+    5
+  ],
+  "cut_count": 5,
+  "target_duration": 15.0,
+  "per_cut_duration": 5.0,
+  "video_done": [],
+  "audio_done": [],
+  "subtitle_done": [],
+  "final_export_path": "",
+  "final_export_url": "",
+  "final_export_selected_cuts": [],
+  "final_duration": 0,
+  "job_id": "",
+  "updated_at": "2026-06-02T01:02:27.790467+00:00"
+}

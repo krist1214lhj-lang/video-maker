@@ -1,0 +1,26 @@
+---
+description: 내일 세션 재개 — Audio+Subtitle vs Final Export 작업 이어하기
+alwaysApply: true
+---
+
+# 세션 재개 (2026-06-02)
+
+새 대화를 시작하면 **먼저** `.cursor/session-resume.md`를 읽고 그 내용을 기준으로 작업을 이어가세요.
+
+## 현재 목표
+
+- **Generate Audio + Subtitle** → Audio/Subtitle만. Final Export **자동 실행 금지**.
+- **Create Final Video** 또는 **Generate All** 클릭 시에만 Final Export.
+
+## 제약
+
+- 서버 export 로직(`main.py`, ffmpeg pipeline) **변경 금지** — 프론트(`templates/index.html`) 위주.
+- 커밋은 사용자가 요청할 때만.
+- 사용자에게 **한국어**로 답변.
+
+## 내일 첫 할 일
+
+1. `session-resume.md`의 Remaining Work #1 검증 (강력 새로고침 → Audio+Subtitle → Network/콘솔 확인).
+2. 문제 있으면 원인 추적 후 `templates/index.html`만 최소 수정.
+
+작업 완료 후 `session-resume.md`의 Remaining Work를 업데이트하거나, 더 이상 필요 없으면 이 rule과 resume 파일 삭제를 사용자에게 제안하세요.

@@ -40,3 +40,7 @@ projects/*/videos/
 
 # Logs
 *.log
+
+# Phase 0~1 backup temp dumps (keep README + snapshots in git if needed)
+backup/temp_files/*
+!backup/temp_files/.gitkeep

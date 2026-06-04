@@ -1,0 +1,56 @@
+{
+  "project": "test_03",
+  "topic": "비오는날 힘없이 집으로 돌아가는 장면",
+  "duration": 20,
+  "storyline_summary": "'비오는날 힘없이 집으로 돌아가는 장면'의 감정선을 따라가는 (따뜻한 반려견 쇼츠) 잔잔한 7컷 이야기.",
+  "story_arc": "도입-그리움-설렘-만남-안정",
+  "selected_cuts": [
+    1
+  ],
+  "items": [
+    {
+      "cut": 1,
+      "text": "'비오는날 힘없이 집으로 돌아가는 장면'의 시…",
+      "subtitle": "'비오는날 힘없이 집으로 돌아가는 장면'의 시…",
+      "video_path": "/home/hyunjun/codex-project/projects/test_03/generated_cuts/cut_001_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/test_03/audio/narration_01.mp3",
+      "duration": 20.0,
+      "voice_duration": 4.704
+    }
+  ],
+  "descriptions": [
+    {
+      "cut": 1,
+      "text": "'비오는날 힘없이 집으로 돌아가는 장면'의 시…"
+    }
+  ],
+  "subtitles": [
+    {
+      "cut": 1,
+      "text": "'비오는날 힘없이 집으로 돌아가는 장면'의 시…",
+      "start": 0.0,
+      "end": 20.0
+    }
+  ],
+  "narration": [
+    {
+      "cut": 1,
+      "text": "'비오는날 힘없이 집으로 돌아가는 장면'의 시…"
+    }
+  ],
+  "source": "storyline",
+  "timing_plan": {
+    "target_duration": 20.0,
+    "selected_cuts": [
+      1
+    ],
+    "cuts": [
+      {
+        "cut": 1,
+        "start": 0.0,
+        "end": 20.0,
+        "duration": 20.0
+      }
+    ]
+  }
+}

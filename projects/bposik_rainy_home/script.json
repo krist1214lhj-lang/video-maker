@@ -1,0 +1,273 @@
+{
+  "project": "bposik_rainy_home",
+  "topic": "애견카페에서 다른 친구들과 신나게 노는 뽀식이",
+  "duration": 30,
+  "storyline_summary": "'애견카페에서 다른 친구들과 신나게 노는 뽀식이'을(를) 코믹하게 풀어낸 (애니메이션) 가벼운 5컷 이야기. (코믹한영상+애니메이션)",
+  "story_arc": "도입-가식-들킴-들뜸-코믹 마무리",
+  "selected_cuts": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    7,
+    8,
+    10
+  ],
+  "items": [
+    {
+      "cut": 1,
+      "text": "'애견카페에서 다른 친구들과 신나게 노는 뽀식…",
+      "subtitle": "'애견카페에서 다른 친구들과 신나게 노는 뽀식…",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/clips/cut_1_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/audio/narration_01.mp3",
+      "duration": 3.75,
+      "voice_duration": 4.56
+    },
+    {
+      "cut": 2,
+      "text": "'애견카페에서 다른 친구들과 신나게 노는 뽀식…",
+      "subtitle": "'애견카페에서 다른 친구들과 신나게 노는 뽀식…",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/clips/cut_2_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/audio/narration_02.mp3",
+      "duration": 3.75,
+      "voice_duration": 4.8
+    },
+    {
+      "cut": 3,
+      "text": "계획과 다른 상황에 표정이 굳는 순간",
+      "subtitle": "계획과 다른 상황에 표정이 굳는 순간",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/clips/cut_3_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/audio/narration_03.mp3",
+      "duration": 3.75,
+      "voice_duration": 3.864
+    },
+    {
+      "cut": 4,
+      "text": "계획과 다른 상황에 표정이 굳는 순간",
+      "subtitle": "계획과 다른 상황에 표정이 굳는 순간",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/clips/cut_4_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/audio/narration_04.mp3",
+      "duration": 3.75,
+      "voice_duration": 3.72
+    },
+    {
+      "cut": 5,
+      "text": "어색하게 상황을 수습하려는 몸짓",
+      "subtitle": "어색하게 상황을 수습하려는 몸짓",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/clips/cut_5_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/audio/narration_05.mp3",
+      "duration": 3.75,
+      "voice_duration": 3.552
+    },
+    {
+      "cut": 7,
+      "text": "생각보다 잘 풀린 듯 보이는 착각",
+      "subtitle": "생각보다 잘 풀린 듯 보이는 착각",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/clips/cut_7_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/audio/narration_07.mp3",
+      "duration": 3.75,
+      "voice_duration": 3.816
+    },
+    {
+      "cut": 8,
+      "text": "생각보다 잘 풀린 듯 보이는 착각",
+      "subtitle": "생각보다 잘 풀린 듯 보이는 착각",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/clips/cut_8_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/audio/narration_08.mp3",
+      "duration": 3.75,
+      "voice_duration": 3.12
+    },
+    {
+      "cut": 10,
+      "text": "마지막에 작은 실수로 웃음을 남김",
+      "subtitle": "마지막에 작은 실수로 웃음을 남김",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/clips/cut_10_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rainy_home/audio/narration_10.mp3",
+      "duration": 3.75,
+      "voice_duration": 4.008
+    }
+  ],
+  "descriptions": [
+    {
+      "cut": 1,
+      "text": "'애견카페에서 다른 친구들과 신나게 노는 뽀식…"
+    },
+    {
+      "cut": 2,
+      "text": "'애견카페에서 다른 친구들과 신나게 노는 뽀식…"
+    },
+    {
+      "cut": 3,
+      "text": "계획과 다른 상황에 표정이 굳는 순간"
+    },
+    {
+      "cut": 4,
+      "text": "계획과 다른 상황에 표정이 굳는 순간"
+    },
+    {
+      "cut": 5,
+      "text": "어색하게 상황을 수습하려는 몸짓"
+    },
+    {
+      "cut": 7,
+      "text": "생각보다 잘 풀린 듯 보이는 착각"
+    },
+    {
+      "cut": 8,
+      "text": "생각보다 잘 풀린 듯 보이는 착각"
+    },
+    {
+      "cut": 10,
+      "text": "마지막에 작은 실수로 웃음을 남김"
+    }
+  ],
+  "subtitles": [
+    {
+      "cut": 1,
+      "text": "'애견카페에서 다른 친구들과 신나게 노는 뽀식…",
+      "start": 0.0,
+      "end": 3.75
+    },
+    {
+      "cut": 2,
+      "text": "'애견카페에서 다른 친구들과 신나게 노는 뽀식…",
+      "start": 3.75,
+      "end": 7.5
+    },
+    {
+      "cut": 3,
+      "text": "계획과 다른 상황에 표정이 굳는 순간",
+      "start": 7.5,
+      "end": 11.25
+    },
+    {
+      "cut": 4,
+      "text": "계획과 다른 상황에 표정이 굳는 순간",
+      "start": 11.25,
+      "end": 15.0
+    },
+    {
+      "cut": 5,
+      "text": "어색하게 상황을 수습하려는 몸짓",
+      "start": 15.0,
+      "end": 18.75
+    },
+    {
+      "cut": 7,
+      "text": "생각보다 잘 풀린 듯 보이는 착각",
+      "start": 18.75,
+      "end": 22.5
+    },
+    {
+      "cut": 8,
+      "text": "생각보다 잘 풀린 듯 보이는 착각",
+      "start": 22.5,
+      "end": 26.25
+    },
+    {
+      "cut": 10,
+      "text": "마지막에 작은 실수로 웃음을 남김",
+      "start": 26.25,
+      "end": 30.0
+    }
+  ],
+  "narration": [
+    {
+      "cut": 1,
+      "text": "'애견카페에서 다른 친구들과 신나게 노는 뽀식…"
+    },
+    {
+      "cut": 2,
+      "text": "'애견카페에서 다른 친구들과 신나게 노는 뽀식…"
+    },
+    {
+      "cut": 3,
+      "text": "계획과 다른 상황에 표정이 굳는 순간"
+    },
+    {
+      "cut": 4,
+      "text": "계획과 다른 상황에 표정이 굳는 순간"
+    },
+    {
+      "cut": 5,
+      "text": "어색하게 상황을 수습하려는 몸짓"
+    },
+    {
+      "cut": 7,
+      "text": "생각보다 잘 풀린 듯 보이는 착각"
+    },
+    {
+      "cut": 8,
+      "text": "생각보다 잘 풀린 듯 보이는 착각"
+    },
+    {
+      "cut": 10,
+      "text": "마지막에 작은 실수로 웃음을 남김"
+    }
+  ],
+  "source": "storyline",
+  "timing_plan": {
+    "target_duration": 30.0,
+    "selected_cuts": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      7,
+      8,
+      10
+    ],
+    "cuts": [
+      {
+        "cut": 1,
+        "start": 0.0,
+        "end": 3.75,
+        "duration": 3.75
+      },
+      {
+        "cut": 2,
+        "start": 3.75,
+        "end": 7.5,
+        "duration": 3.75
+      },
+      {
+        "cut": 3,
+        "start": 7.5,
+        "end": 11.25,
+        "duration": 3.75
+      },
+      {
+        "cut": 4,
+        "start": 11.25,
+        "end": 15.0,
+        "duration": 3.75
+      },
+      {
+        "cut": 5,
+        "start": 15.0,
+        "end": 18.75,
+        "duration": 3.75
+      },
+      {
+        "cut": 7,
+        "start": 18.75,
+        "end": 22.5,
+        "duration": 3.75
+      },
+      {
+        "cut": 8,
+        "start": 22.5,
+        "end": 26.25,
+        "duration": 3.75
+      },
+      {
+        "cut": 10,
+        "start": 26.25,
+        "end": 30.0,
+        "duration": 3.75
+      }
+    ]
+  }
+}

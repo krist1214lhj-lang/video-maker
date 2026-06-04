@@ -1,0 +1,56 @@
+{
+  "project": "test_02",
+  "topic": "뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상",
+  "duration": 20,
+  "storyline_summary": "뽀식이는 같은 애견카페 안에서 다른 친구 강아지들과 뽀식이가 엄마와 애견카페에 가서 좌충우돌하는 영상. 표정과 포즈만 바뀌며 (따뜻한 반려견 쇼츠) 코믹하게 이어진다.",
+  "story_arc": "도입-가식-들킴-들뜸-코믹 마무리",
+  "selected_cuts": [
+    1
+  ],
+  "items": [
+    {
+      "cut": 1,
+      "text": "애견카페 입구 근처에서 다른 강아지 친구들을 …",
+      "subtitle": "애견카페 입구 근처에서 다른 강아지 친구들을 …",
+      "video_path": "/home/hyunjun/codex-project/projects/test_02/generated_cuts/cut_001_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/test_02/audio/narration_01.mp3",
+      "duration": 20.0,
+      "voice_duration": 4.416
+    }
+  ],
+  "descriptions": [
+    {
+      "cut": 1,
+      "text": "애견카페 입구 근처에서 다른 강아지 친구들을 …"
+    }
+  ],
+  "subtitles": [
+    {
+      "cut": 1,
+      "text": "애견카페 입구 근처에서 다른 강아지 친구들을 …",
+      "start": 0.0,
+      "end": 20.0
+    }
+  ],
+  "narration": [
+    {
+      "cut": 1,
+      "text": "애견카페 입구 근처에서 다른 강아지 친구들을 …"
+    }
+  ],
+  "source": "storyline",
+  "timing_plan": {
+    "target_duration": 20.0,
+    "selected_cuts": [
+      1
+    ],
+    "cuts": [
+      {
+        "cut": 1,
+        "start": 0.0,
+        "end": 20.0,
+        "duration": 20.0
+      }
+    ]
+  }
+}

@@ -1,16 +1,19 @@
-import base64
 import json
-import mimetypes
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
-from urllib.request import urlopen
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
 from .base import VideoGenerationRequest, VideoGenerationResult, VideoProvider
 from .media_paths import resolve_local_image_path
+from .public_url import (
+    REPLICATE_NGROK_REQUIRED_MESSAGE,
+    get_public_base_url,
+    resolve_replicate_start_image_urls,
+    validate_replicate_start_image_url,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -44,37 +47,9 @@ class ReplicateVideoProvider(VideoProvider):
             return f"{configured}:{version}"
         return configured
 
-    def _file_to_data_uri(self, path: Path) -> str:
-        mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
-        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-        return f"data:{mime_type};base64,{encoded}"
-
-    def _public_image_url(self, image_path: str) -> str:
-        parsed = urlparse(image_path)
-        if parsed.scheme in {"http", "https"}:
-            if parsed.hostname in {"127.0.0.1", "localhost", "0.0.0.0"}:
-                raise RuntimeError(
-                    "Replicate cannot access localhost image URLs. Set PUBLIC_BASE_URL or NGROK_URL to your ngrok HTTPS URL."
-                )
-            return image_path
-
-        public_base_url = (os.getenv("PUBLIC_BASE_URL") or os.getenv("NGROK_URL") or "").strip()
-        if not public_base_url:
-            raise RuntimeError(
-                "Replicate requires a public image URL when no local image file exists. "
-                "Set PUBLIC_BASE_URL or NGROK_URL, or regenerate storyboard images locally."
-            )
-
-        if not public_base_url.startswith(("https://", "http://")):
-            raise RuntimeError("PUBLIC_BASE_URL/NGROK_URL must include https:// or http://.")
-
-        normalized_path = image_path if image_path.startswith("/") else f"/{image_path}"
-        return urljoin(public_base_url.rstrip("/") + "/", normalized_path.lstrip("/"))
-
-    def _prepare_start_image(self, image_path: str) -> tuple[str, str, Path | None]:
+    def _prepare_start_image(self, image_path: str) -> tuple[str, str, Path | None, str, str]:
         local_path = resolve_local_image_path(image_path)
-        if local_path and local_path.exists() and local_path.stat().st_size > 0:
-            return self._file_to_data_uri(local_path), "local_data_uri", local_path
+        local_image_url = str(image_path or "").strip()
 
         if local_path and not local_path.exists():
             raise RuntimeError(
@@ -82,8 +57,27 @@ class ReplicateVideoProvider(VideoProvider):
                 "Regenerate storyboard images before running Replicate video generation."
             )
 
-        public_url = self._public_image_url(image_path)
-        return public_url, "public_url", local_path
+        public_base_url = get_public_base_url()
+        if public_base_url:
+            local_image_url, public_start_image_url, start_image = resolve_replicate_start_image_urls(image_path)
+            print(
+                f"[replicate] start_image public_url={public_start_image_url} "
+                f"local_image_url={local_image_url}",
+                flush=True,
+            )
+            return start_image, "public_url", local_path, local_image_url, public_start_image_url
+
+        parsed = urlparse(local_image_url.split("?", 1)[0])
+        if parsed.scheme in {"http", "https"}:
+            hostname = (parsed.hostname or "").lower()
+            if hostname in {"127.0.0.1", "localhost", "0.0.0.0"}:
+                raise RuntimeError(REPLICATE_NGROK_REQUIRED_MESSAGE)
+            is_valid, _reason = validate_replicate_start_image_url(local_image_url)
+            if not is_valid:
+                raise RuntimeError(REPLICATE_NGROK_REQUIRED_MESSAGE)
+            return local_image_url, "public_url", local_path, local_image_url, local_image_url
+
+        raise RuntimeError(REPLICATE_NGROK_REQUIRED_MESSAGE)
 
     def _extract_video_output(self, output) -> str:
         if isinstance(output, str):
@@ -144,6 +138,8 @@ class ReplicateVideoProvider(VideoProvider):
         if not video_url.startswith(("http://", "https://")):
             return False
 
+        from urllib.request import urlopen
+
         with urlopen(video_url, timeout=180) as response:
             destination.write_bytes(response.read())
 
@@ -169,8 +165,11 @@ class ReplicateVideoProvider(VideoProvider):
         prompt_path = request.output_dir / f"{cut_name}_video_prompt.txt"
         created_at = datetime.now(timezone.utc).isoformat()
         model = self._resolve_model_ref()
-        start_image, start_image_source, local_image_path = self._prepare_start_image(request.image_path)
+        start_image, start_image_source, local_image_path, local_image_url, public_start_image_url = (
+            self._prepare_start_image(request.image_path)
+        )
         replicate_mode = (os.getenv("REPLICATE_VIDEO_MODE") or "standard").strip() or "standard"
+        motion_prompt_text = request.motion_prompt if isinstance(request.motion_prompt, str) else str(request.motion_prompt or "")
 
         prompt_path.write_text(
             "\n\n".join(
@@ -183,6 +182,8 @@ class ReplicateVideoProvider(VideoProvider):
                     f"DURATION: {request.duration}s",
                     f"START IMAGE SOURCE: {start_image_source}",
                     f"LOCAL IMAGE PATH: {local_image_path or 'none'}",
+                    f"LOCAL IMAGE URL: {local_image_url}",
+                    f"PUBLIC START IMAGE URL: {public_start_image_url}",
                     f"IMAGE INPUT: {request.image_path}",
                     "IMAGE PROMPT:",
                     request.image_prompt,
@@ -193,7 +194,7 @@ class ReplicateVideoProvider(VideoProvider):
                     "CONTINUITY CONSTRAINTS:",
                     json.dumps(request.continuity_constraints or {}, ensure_ascii=False, indent=2),
                     "MOTION PROMPT:",
-                    request.motion_prompt,
+                    motion_prompt_text,
                 ]
             ),
             encoding="utf-8",
@@ -203,18 +204,32 @@ class ReplicateVideoProvider(VideoProvider):
         replicate_duration = 5 if request.duration <= 5 else 10
         input_payload = {
             "mode": replicate_mode,
-            "prompt": request.motion_prompt,
+            "prompt": motion_prompt_text,
             "start_image": start_image,
             "duration": replicate_duration,
             "negative_prompt": REPLICATE_NEGATIVE_PROMPT,
         }
         print(
             f"[replicate] CUT {request.cut_number} model={model} mode={replicate_mode} "
-            f"start_image_source={start_image_source}"
+            f"start_image_source={start_image_source} public_start_image_url={public_start_image_url} "
+            f"prompt_len={len(str(request.motion_prompt or ''))}",
+            flush=True,
         )
+        cut_id = f"cut_{int(request.cut_number):03d}"
+        print("[replicate-start]", flush=True)
+        print(f"cut_id: {cut_id}", flush=True)
+        print(f"start_image: {public_start_image_url or start_image}", flush=True)
+        print("[replicate-poll] waiting for model output", flush=True)
         try:
             output = client.run(model, input=input_payload)
+            print("[replicate-complete]", flush=True)
         except Exception as error:
+            print("[replicate-failed]", flush=True)
+            print(
+                f"[replicate] generation failed cut={request.cut_number} "
+                f"error_type={error.__class__.__name__} error={error}",
+                flush=True,
+            )
             failure_payload = {
                 "job_id": request.job_id,
                 "provider": self.name,
@@ -224,6 +239,8 @@ class ReplicateVideoProvider(VideoProvider):
                 "cut_number": request.cut_number,
                 "image_path": request.image_path,
                 "local_image_path": str(local_image_path) if local_image_path else "",
+                "local_image_url": local_image_url,
+                "public_start_image_url": public_start_image_url,
                 "start_image_source": start_image_source,
                 "image_prompt": request.image_prompt,
                 "character_lock_prompt": request.character_lock_prompt,
@@ -234,7 +251,7 @@ class ReplicateVideoProvider(VideoProvider):
                 "replicate_duration": replicate_duration,
                 "input": {
                     **input_payload,
-                    "start_image": f"<{start_image_source} omitted>",
+                    "start_image": public_start_image_url or f"<{start_image_source} omitted>",
                 },
                 "error_type": error.__class__.__name__,
                 "error": str(error),
@@ -286,6 +303,8 @@ class ReplicateVideoProvider(VideoProvider):
             "cut_number": request.cut_number,
             "image_path": request.image_path,
             "local_image_path": str(local_image_path) if local_image_path else "",
+            "local_image_url": local_image_url,
+            "public_start_image_url": public_start_image_url,
             "start_image_source": start_image_source,
             "image_prompt": request.image_prompt,
             "character_lock_prompt": request.character_lock_prompt,
@@ -296,7 +315,7 @@ class ReplicateVideoProvider(VideoProvider):
             "replicate_duration": replicate_duration,
             "input": {
                 **input_payload,
-                "start_image": f"<{start_image_source} omitted>",
+                "start_image": public_start_image_url or f"<{start_image_source} omitted>",
             },
             "raw_response": self._jsonable_output(output),
             "video_output": video_output,

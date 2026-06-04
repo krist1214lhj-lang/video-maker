@@ -44,12 +44,14 @@ class ProjectVoiceGenerator:
         api_key: str | None = None,
         model: str | None = None,
         voice: str | None = None,
+        preferred_provider: str = "openai",
     ):
         self.audio_dir = audio_dir
         self.public_url_builder = public_url_builder
         self.api_key = (api_key if api_key is not None else os.getenv("OPENAI_API_KEY") or "").strip()
         self.model = (model or os.getenv("OPENAI_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
         self.voice = (voice or os.getenv("OPENAI_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
+        self.preferred_provider = (preferred_provider or "openai").strip().lower()
         self.audio_dir.mkdir(parents=True, exist_ok=True)
         self._openai_client = None
 
@@ -73,6 +75,15 @@ class ProjectVoiceGenerator:
         fallback_duration = float(max(cut.duration, 1))
 
         openai_error: str | None = None
+        if self.preferred_provider == "mock":
+            return self._generate_mock_cut(
+                cut=cut,
+                text=text,
+                mp3_path=mp3_path,
+                sidecar_path=sidecar_path,
+                fallback_duration=fallback_duration,
+                openai_error=None,
+            )
         if self._get_openai_client():
             try:
                 return self._generate_openai_cut(
@@ -89,6 +100,9 @@ class ProjectVoiceGenerator:
                     cut.cut_number,
                     openai_error,
                 )
+
+        if self.preferred_provider == "openai":
+            raise RuntimeError(openai_error or "OPENAI_API_KEY is not configured.")
 
         return self._generate_mock_cut(
             cut=cut,

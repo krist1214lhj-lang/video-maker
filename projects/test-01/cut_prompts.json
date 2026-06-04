@@ -1,0 +1,70 @@
+{
+  "topic": "밥 달라고 행패부리는 뽀식이",
+  "style": "코믹한 영상",
+  "summary": "'밥 달라고 행패부리는 뽀식이'을(를) 코믹하게 풀어낸 (코믹한 영상) 가벼운 7컷 이야기.",
+  "cuts": [
+    {
+      "cut_number": 1,
+      "cut_type": "ESTABLISHING",
+      "scene_description": "'밥 달라고 행패부리는 뽀식이' 시작, 뽀식이가 과하게 자신 있어함",
+      "narration": "'밥 달라고 행패부리는 뽀식이'을(를) 코믹하게 풀어낸 (코믹한 영상) 가벼운 7컷 이야기. '밥 달라고 행패부리는 뽀식이'을(를) 코믹하게 풀어낸 (코믹한 영상) 가벼운 7컷 이야기. '밥 달라고 행패부리는 뽀식이' 시작, 뽀식이…",
+      "subtitle": "'밥 달라고 행패부리는 뽀식이' 시작, 뽀식이…",
+      "emotion": "자신",
+      "image_prompt": "코믹한 영상, '밥 달라고 행패부리는 뽀식이' 시작, 뽀식이가 과하게 자신 있어함 '밥 달라고 행패부리는 뽀식이' 시작, 뽀식이… '밥 달라고 행패부리는 뽀식이' 시작, 뽀식이… 자신, topic: 밥 달라고 행패부리는 뽀식이, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 2,
+      "cut_type": "EMOTIONAL",
+      "scene_description": "계획과 다른 상황에 표정이 굳는 순간",
+      "narration": "계획과 다른 상황에 표정이 굳는 순간",
+      "subtitle": "계획과 다른 상황에 표정이 굳는 순간",
+      "emotion": "당황",
+      "image_prompt": "코믹한 영상, 계획과 다른 상황에 표정이 굳는 순간 계획과 다른 상황에 표정이 굳는 순간 계획과 다른 상황에 표정이 굳는 순간 당황, topic: 밥 달라고 행패부리는 뽀식이, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 3,
+      "cut_type": "REVEAL",
+      "scene_description": "계획과 다른 상황에 표정이 굳는 순간",
+      "narration": "계획과 다른 상황에 표정이 굳는 순간",
+      "subtitle": "계획과 다른 상황에 표정이 굳는 순간",
+      "emotion": "당황",
+      "image_prompt": "코믹한 영상, 계획과 다른 상황에 표정이 굳는 순간 계획과 다른 상황에 표정이 굳는 순간 계획과 다른 상황에 표정이 굳는 순간 당황, topic: 밥 달라고 행패부리는 뽀식이, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 4,
+      "cut_type": "TRANSITION",
+      "scene_description": "어색하게 상황을 수습하려는 몸짓",
+      "narration": "어색하게 상황을 수습하려는 몸짓",
+      "subtitle": "어색하게 상황을 수습하려는 몸짓",
+      "emotion": "코믹",
+      "image_prompt": "코믹한 영상, 어색하게 상황을 수습하려는 몸짓 어색하게 상황을 수습하려는 몸짓 어색하게 상황을 수습하려는 몸짓 코믹, topic: 밥 달라고 행패부리는 뽀식이, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 5,
+      "cut_type": "EMOTIONAL",
+      "scene_description": "생각보다 잘 풀린 듯 보이는 착각",
+      "narration": "생각보다 잘 풀린 듯 보이는 착각",
+      "subtitle": "생각보다 잘 풀린 듯 보이는 착각",
+      "emotion": "들뜸",
+      "image_prompt": "코믹한 영상, 생각보다 잘 풀린 듯 보이는 착각 생각보다 잘 풀린 듯 보이는 착각 생각보다 잘 풀린 듯 보이는 착각 들뜸, topic: 밥 달라고 행패부리는 뽀식이, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 6,
+      "cut_type": "REVEAL",
+      "scene_description": "생각보다 잘 풀린 듯 보이는 착각",
+      "narration": "생각보다 잘 풀린 듯 보이는 착각",
+      "subtitle": "생각보다 잘 풀린 듯 보이는 착각",
+      "emotion": "들뜸",
+      "image_prompt": "코믹한 영상, 생각보다 잘 풀린 듯 보이는 착각 생각보다 잘 풀린 듯 보이는 착각 생각보다 잘 풀린 듯 보이는 착각 들뜸, topic: 밥 달라고 행패부리는 뽀식이, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    },
+    {
+      "cut_number": 7,
+      "cut_type": "ENDING",
+      "scene_description": "마지막에 작은 실수로 웃음을 남김",
+      "narration": "마지막에 작은 실수로 웃음을 남김",
+      "subtitle": "마지막에 작은 실수로 웃음을 남김",
+      "emotion": "유쾌",
+      "image_prompt": "코믹한 영상, 마지막에 작은 실수로 웃음을 남김 마지막에 작은 실수로 웃음을 남김 마지막에 작은 실수로 웃음을 남김 유쾌, topic: 밥 달라고 행패부리는 뽀식이, cinematic still, detailed composition, realistic lighting, 16:9 frame, no text"
+    }
+  ]
+}

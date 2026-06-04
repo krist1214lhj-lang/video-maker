@@ -1,0 +1,56 @@
+{
+  "project": "test-01",
+  "topic": "밥 달라고 행패부리는 뽀식이",
+  "duration": 20,
+  "storyline_summary": "'밥 달라고 행패부리는 뽀식이'을(를) 코믹하게 풀어낸 (코믹한 영상) 가벼운 7컷 이야기.",
+  "story_arc": "도입-가식-들킴-들뜸-코믹 마무리",
+  "selected_cuts": [
+    1
+  ],
+  "items": [
+    {
+      "cut": 1,
+      "text": "'밥 달라고 행패부리는 뽀식이' 시작, 뽀식이…",
+      "subtitle": "'밥 달라고 행패부리는 뽀식이' 시작, 뽀식이…",
+      "video_path": "/home/hyunjun/codex-project/projects/test-01/generated_cuts/cut_001_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/test-01/audio/narration_01.mp3",
+      "duration": 20.0,
+      "voice_duration": 4.416
+    }
+  ],
+  "descriptions": [
+    {
+      "cut": 1,
+      "text": "'밥 달라고 행패부리는 뽀식이' 시작, 뽀식이…"
+    }
+  ],
+  "subtitles": [
+    {
+      "cut": 1,
+      "text": "'밥 달라고 행패부리는 뽀식이' 시작, 뽀식이…",
+      "start": 0.0,
+      "end": 20.0
+    }
+  ],
+  "narration": [
+    {
+      "cut": 1,
+      "text": "'밥 달라고 행패부리는 뽀식이' 시작, 뽀식이…"
+    }
+  ],
+  "source": "storyline",
+  "timing_plan": {
+    "target_duration": 20.0,
+    "selected_cuts": [
+      1
+    ],
+    "cuts": [
+      {
+        "cut": 1,
+        "start": 0.0,
+        "end": 20.0,
+        "duration": 20.0
+      }
+    ]
+  }
+}

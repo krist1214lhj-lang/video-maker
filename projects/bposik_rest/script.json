@@ -2,132 +2,334 @@
   "project": "bposik_rest",
   "topic": "뽀식이의 퇴근후 루틴",
   "duration": 20,
-  "storyline_summary": "뽀식이는 집사가 퇴근하기를 기다리며 조용한 척하지만 사실은 계속 현관 소리에 신경을 쓴다. 집사가 돌아오자 모르는 척하다가 결국 반가움을 숨기지 못한다.",
-  "story_arc": "도입-긴장-기대-만남-안정",
+  "storyline_summary": "뽀식이는 퇴근을 기다리는 척하지만 이미 집사 귀환을 다 읽고 있다. 쿨한 척하다 결국 들키는 (코믹한 영상) 코믹한 하루의 끝.",
+  "story_arc": "도입-가식-들킴-들뜸-코믹 마무리",
   "selected_cuts": [
     1,
     2,
     3,
     4,
-    5
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
   ],
   "items": [
     {
       "cut": 1,
-      "text": "어떤 소리가 들릴까?",
-      "subtitle": "어떤 소리가 들릴까?",
+      "text": "뽀식이가 소파에서 현관만 슬쩍 보며 '아직 멀…",
+      "subtitle": "뽀식이가 소파에서 현관만 슬쩍 보며 '아직 멀…",
       "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_1_mock.mp4",
       "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_01.mp3",
-      "duration": 1.848
+      "duration": 2.0,
+      "voice_duration": 5.808
     },
     {
       "cut": 2,
-      "text": "문 소리가 났나?",
-      "subtitle": "문 소리가 났나?",
+      "text": "뽀식이가 소파에서 현관만 슬쩍 보며 '아직 멀…",
+      "subtitle": "뽀식이가 소파에서 현관만 슬쩍 보며 '아직 멀…",
       "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_2_mock.mp4",
       "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_02.mp3",
-      "duration": 2.808
+      "duration": 2.0,
+      "voice_duration": 5.76
     },
     {
       "cut": 3,
-      "text": "지금인가?",
-      "subtitle": "지금인가?",
+      "text": "현관 쪽 소리에 귀만 쫑긋, 몸은 꼼짝 않는 …",
+      "subtitle": "현관 쪽 소리에 귀만 쫑긋, 몸은 꼼짝 않는 …",
       "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_3_mock.mp4",
       "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_03.mp3",
-      "duration": 1.968
+      "duration": 2.0,
+      "voice_duration": 5.112
     },
     {
       "cut": 4,
-      "text": "이제 다가가도 될까?",
-      "subtitle": "이제 다가가도 될까?",
+      "text": "현관 쪽 소리에 귀만 쫑긋, 몸은 꼼짝 않는 …",
+      "subtitle": "현관 쪽 소리에 귀만 쫑긋, 몸은 꼼짝 않는 …",
       "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_4_mock.mp4",
       "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_04.mp3",
-      "duration": 2.448
+      "duration": 2.0,
+      "voice_duration": 4.8
     },
     {
       "cut": 5,
-      "text": "이제야 마음이 놓인다.",
-      "subtitle": "이제야 마음이 놓인다.",
+      "text": "문 열리는 소리에 순간 몸을 돌리다가 '못 본…",
+      "subtitle": "문 열리는 소리에 순간 몸을 돌리다가 '못 본…",
       "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_5_mock.mp4",
       "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_05.mp3",
-      "duration": 1.92
+      "duration": 2.0,
+      "voice_duration": 4.416
+    },
+    {
+      "cut": 6,
+      "text": "문 열리는 소리에 순간 몸을 돌리다가 '못 본…",
+      "subtitle": "문 열리는 소리에 순간 몸을 돌리다가 '못 본…",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_6_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_06.mp3",
+      "duration": 2.0,
+      "voice_duration": 4.248
+    },
+    {
+      "cut": 7,
+      "text": "집사 발소리에 꼬리만 먼저 출렁이는 반응",
+      "subtitle": "집사 발소리에 꼬리만 먼저 출렁이는 반응",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_7_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_07.mp3",
+      "duration": 2.0,
+      "voice_duration": 4.656
+    },
+    {
+      "cut": 8,
+      "text": "집사 발소리에 꼬리만 먼저 출렁이는 반응",
+      "subtitle": "집사 발소리에 꼬리만 먼저 출렁이는 반응",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_8_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_08.mp3",
+      "duration": 2.0,
+      "voice_duration": 3.912
+    },
+    {
+      "cut": 9,
+      "text": "결국 달려가 안기려다 마지막에 쿨한 척 멈추는 결말",
+      "subtitle": "결국 달려가 안기려다 마지막에 쿨한 척 멈추는 결말",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_9_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_09.mp3",
+      "duration": 2.0,
+      "voice_duration": 6.12
+    },
+    {
+      "cut": 10,
+      "text": "결국 달려가 안기려다 마지막에 쿨한 척 멈추는 결말",
+      "subtitle": "결국 달려가 안기려다 마지막에 쿨한 척 멈추는 결말",
+      "video_path": "/home/hyunjun/codex-project/projects/bposik_rest/clips/cut_10_mock.mp4",
+      "audio_path": "/home/hyunjun/codex-project/projects/bposik_rest/audio/narration_10.mp3",
+      "duration": 2.0,
+      "voice_duration": 5.064
     }
   ],
   "descriptions": [
     {
       "cut": 1,
-      "text": "어떤 소리가 들릴까?"
+      "text": "뽀식이가 소파에서 현관만 슬쩍 보며 '아직 멀…"
     },
     {
       "cut": 2,
-      "text": "문 소리가 났나?"
+      "text": "뽀식이가 소파에서 현관만 슬쩍 보며 '아직 멀…"
     },
     {
       "cut": 3,
-      "text": "지금인가?"
+      "text": "현관 쪽 소리에 귀만 쫑긋, 몸은 꼼짝 않는 …"
     },
     {
       "cut": 4,
-      "text": "이제 다가가도 될까?"
+      "text": "현관 쪽 소리에 귀만 쫑긋, 몸은 꼼짝 않는 …"
     },
     {
       "cut": 5,
-      "text": "이제야 마음이 놓인다."
+      "text": "문 열리는 소리에 순간 몸을 돌리다가 '못 본…"
+    },
+    {
+      "cut": 6,
+      "text": "문 열리는 소리에 순간 몸을 돌리다가 '못 본…"
+    },
+    {
+      "cut": 7,
+      "text": "집사 발소리에 꼬리만 먼저 출렁이는 반응"
+    },
+    {
+      "cut": 8,
+      "text": "집사 발소리에 꼬리만 먼저 출렁이는 반응"
+    },
+    {
+      "cut": 9,
+      "text": "결국 달려가 안기려다 마지막에 쿨한 척 멈추는 결말"
+    },
+    {
+      "cut": 10,
+      "text": "결국 달려가 안기려다 마지막에 쿨한 척 멈추는 결말"
     }
   ],
   "subtitles": [
     {
       "cut": 1,
-      "text": "어떤 소리가 들릴까?",
+      "text": "뽀식이가 소파에서 현관만 슬쩍 보며 '아직 멀…",
       "start": 0.0,
-      "end": 4.0
+      "end": 2.0
     },
     {
       "cut": 2,
-      "text": "문 소리가 났나?",
-      "start": 4.0,
-      "end": 8.0
+      "text": "뽀식이가 소파에서 현관만 슬쩍 보며 '아직 멀…",
+      "start": 2.0,
+      "end": 4.0
     },
     {
       "cut": 3,
-      "text": "지금인가?",
-      "start": 8.0,
-      "end": 12.0
+      "text": "현관 쪽 소리에 귀만 쫑긋, 몸은 꼼짝 않는 …",
+      "start": 4.0,
+      "end": 6.0
     },
     {
       "cut": 4,
-      "text": "이제 다가가도 될까?",
-      "start": 12.0,
-      "end": 16.0
+      "text": "현관 쪽 소리에 귀만 쫑긋, 몸은 꼼짝 않는 …",
+      "start": 6.0,
+      "end": 8.0
     },
     {
       "cut": 5,
-      "text": "이제야 마음이 놓인다.",
+      "text": "문 열리는 소리에 순간 몸을 돌리다가 '못 본…",
+      "start": 8.0,
+      "end": 10.0
+    },
+    {
+      "cut": 6,
+      "text": "문 열리는 소리에 순간 몸을 돌리다가 '못 본…",
+      "start": 10.0,
+      "end": 12.0
+    },
+    {
+      "cut": 7,
+      "text": "집사 발소리에 꼬리만 먼저 출렁이는 반응",
+      "start": 12.0,
+      "end": 14.0
+    },
+    {
+      "cut": 8,
+      "text": "집사 발소리에 꼬리만 먼저 출렁이는 반응",
+      "start": 14.0,
+      "end": 16.0
+    },
+    {
+      "cut": 9,
+      "text": "결국 달려가 안기려다 마지막에 쿨한 척 멈추는 결말",
       "start": 16.0,
-      "end": 20
+      "end": 18.0
+    },
+    {
+      "cut": 10,
+      "text": "결국 달려가 안기려다 마지막에 쿨한 척 멈추는 결말",
+      "start": 18.0,
+      "end": 20.0
     }
   ],
   "narration": [
     {
       "cut": 1,
-      "text": "어떤 소리가 들릴까?"
+      "text": "뽀식이가 소파에서 현관만 슬쩍 보며 '아직 멀…"
     },
     {
       "cut": 2,
-      "text": "문 소리가 났나?"
+      "text": "뽀식이가 소파에서 현관만 슬쩍 보며 '아직 멀…"
     },
     {
       "cut": 3,
-      "text": "지금인가?"
+      "text": "현관 쪽 소리에 귀만 쫑긋, 몸은 꼼짝 않는 …"
     },
     {
       "cut": 4,
-      "text": "이제 다가가도 될까?"
+      "text": "현관 쪽 소리에 귀만 쫑긋, 몸은 꼼짝 않는 …"
     },
     {
       "cut": 5,
-      "text": "이제야 마음이 놓인다."
+      "text": "문 열리는 소리에 순간 몸을 돌리다가 '못 본…"
+    },
+    {
+      "cut": 6,
+      "text": "문 열리는 소리에 순간 몸을 돌리다가 '못 본…"
+    },
+    {
+      "cut": 7,
+      "text": "집사 발소리에 꼬리만 먼저 출렁이는 반응"
+    },
+    {
+      "cut": 8,
+      "text": "집사 발소리에 꼬리만 먼저 출렁이는 반응"
+    },
+    {
+      "cut": 9,
+      "text": "결국 달려가 안기려다 마지막에 쿨한 척 멈추는 결말"
+    },
+    {
+      "cut": 10,
+      "text": "결국 달려가 안기려다 마지막에 쿨한 척 멈추는 결말"
     }
   ],
-  "source": "storyline"
+  "source": "storyline",
+  "timing_plan": {
+    "target_duration": 20.0,
+    "selected_cuts": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "cuts": [
+      {
+        "cut": 1,
+        "start": 0.0,
+        "end": 2.0,
+        "duration": 2.0
+      },
+      {
+        "cut": 2,
+        "start": 2.0,
+        "end": 4.0,
+        "duration": 2.0
+      },
+      {
+        "cut": 3,
+        "start": 4.0,
+        "end": 6.0,
+        "duration": 2.0
+      },
+      {
+        "cut": 4,
+        "start": 6.0,
+        "end": 8.0,
+        "duration": 2.0
+      },
+      {
+        "cut": 5,
+        "start": 8.0,
+        "end": 10.0,
+        "duration": 2.0
+      },
+      {
+        "cut": 6,
+        "start": 10.0,
+        "end": 12.0,
+        "duration": 2.0
+      },
+      {
+        "cut": 7,
+        "start": 12.0,
+        "end": 14.0,
+        "duration": 2.0
+      },
+      {
+        "cut": 8,
+        "start": 14.0,
+        "end": 16.0,
+        "duration": 2.0
+      },
+      {
+        "cut": 9,
+        "start": 16.0,
+        "end": 18.0,
+        "duration": 2.0
+      },
+      {
+        "cut": 10,
+        "start": 18.0,
+        "end": 20.0,
+        "duration": 2.0
+      }
+    ]
+  }
 }

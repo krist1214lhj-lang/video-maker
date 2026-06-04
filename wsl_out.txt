@@ -1,5 +1,0 @@
-REPLICATE_API_TOKEN loaded: True
-REPLICATE_API_TOKEN loaded: True
-audio_count 5
-tracks ['/projects/bposik_test/audio/narration_01.mp3', '/projects/bposik_test/audio/narration_02.mp3']
-EXIT_CODE:0

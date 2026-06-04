@@ -1,10 +1,15 @@
 import base64
+import copy
+from dataclasses import replace
 import json
+import math
 import os
 import re
 import shutil
 import subprocess
+import sys
 import time
+import traceback
 import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
@@ -15,10 +20,12 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Query, Request
 from fastapi import HTTPException
+from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from audio_pipeline import (
     BgmGenerator,
     NarrationCutInput,
@@ -33,22 +40,41 @@ from audio_pipeline import (
 from audio_pipeline.project_voice_generator import probe_mp3_duration
 from image_providers import ImageGenerationRequest, get_image_provider
 from image_providers.reference_image import inspect_reference_image_file, SUPPORTED_REFERENCE_EXTENSIONS
-from video_editor import probe_video_metadata
+from video_editor import (
+    cache_bust_video_url,
+    compute_prompt_hash,
+    probe_video_metadata,
+    quarantine_invalid_mp4,
+    validate_playable_mp4,
+)
 from video_editor.project_final_export import (
     FFmpegNotInstalledError,
     FFmpegRunError,
+    FinalTimelineExportInput,
+    FinalTimelineExportItem,
     ProjectFinalExportInput,
     assemble_project_final_export,
+    assemble_project_final_export_from_timeline,
     build_synced_narration_tracks,
     concat_narration_tracks,
+    evaluate_export_duration_drift,
+    EXPORT_DURATION_WARN_TOLERANCE,
     is_valid_media_file,
     normalize_export_cut_video,
     pad_narration_track_to_duration,
     probe_audio_metadata,
     stitch_normalized_export_videos,
+    trim_final_export_to_duration,
 )
 from video_providers import VideoGenerationRequest, get_video_provider
-from video_providers.media_paths import resolve_local_image_path
+from video_providers.media_paths import normalize_web_path, resolve_local_image_path
+from video_providers.public_url import (
+    REPLICATE_NGROK_REQUIRED_MESSAGE,
+    build_public_image_url,
+    get_public_base_url,
+    resolve_replicate_start_image_urls,
+    validate_replicate_start_image_url,
+)
 
 from dotenv import load_dotenv
 
@@ -114,7 +140,80 @@ for directory in (
     directory.mkdir(parents=True, exist_ok=True)
 SERVER_PORT = 8011
 DEFAULT_MOTION_SHOT_CUTS = {1, 3, 5}
+DEFAULT_CUT_COUNT = 5
+MIN_CUT_COUNT = 1
+MAX_CUT_COUNT = 20
+SECONDS_PER_CUT_RECOMMENDATION = 3
 STILL_HOLD_DURATION_SECONDS = 2.5
+
+
+def recommended_cut_count(duration: int | None = None) -> int:
+    if not duration or duration <= 0:
+        return DEFAULT_CUT_COUNT
+    return max(MIN_CUT_COUNT, min(MAX_CUT_COUNT, math.ceil(duration / SECONDS_PER_CUT_RECOMMENDATION)))
+
+
+def normalize_cut_count(cut_count: int | None = None, duration: int | None = None) -> int:
+    if cut_count is None:
+        return recommended_cut_count(duration)
+    try:
+        parsed = int(cut_count)
+    except (TypeError, ValueError):
+        return recommended_cut_count(duration)
+    return max(MIN_CUT_COUNT, min(MAX_CUT_COUNT, parsed))
+
+
+def expand_cut_flow_items(base_cuts: list[dict], cut_count: int) -> list[dict]:
+    resolved_count = normalize_cut_count(cut_count, None)
+    if not base_cuts:
+        return [
+            {
+                "cut": index + 1,
+                "scene": "",
+                "emotion": "",
+                "narration": f"컷 {index + 1}.",
+                "subtitle": f"컷 {index + 1}.",
+            }
+            for index in range(resolved_count)
+        ]
+    if resolved_count <= len(base_cuts):
+        return [{**dict(item), "cut": index + 1} for index, item in enumerate(base_cuts[:resolved_count])]
+    expanded: list[dict] = []
+    last_index = len(base_cuts) - 1
+    for index in range(resolved_count):
+        source_index = round(index * last_index / max(resolved_count - 1, 1))
+        item = dict(base_cuts[min(source_index, last_index)])
+        item["cut"] = index + 1
+        expanded.append(item)
+    return expanded
+
+
+MIDDLE_CUT_PROMPT_TYPES = ["EMOTIONAL", "REVEAL", "TRANSITION"]
+
+
+def get_cut_prompt_type(cut_number: int, cut_count: int) -> str:
+    resolved_count = normalize_cut_count(cut_count, None)
+    if resolved_count <= 1:
+        return "ENDING"
+    if cut_number <= 1:
+        return "ESTABLISHING"
+    if cut_number >= resolved_count:
+        return "ENDING"
+    if resolved_count <= 3 and cut_number == 2:
+        return "EMOTIONAL"
+    return MIDDLE_CUT_PROMPT_TYPES[(cut_number - 2) % len(MIDDLE_CUT_PROMPT_TYPES)]
+
+
+def build_storyboard_cut_templates(base_templates: list[dict], cut_count: int) -> list[dict]:
+    resolved_count = normalize_cut_count(cut_count, None)
+    if not base_templates:
+        return []
+    templates: list[dict] = []
+    for index in range(1, resolved_count + 1):
+        template = copy.deepcopy(base_templates[(index - 1) % len(base_templates)])
+        template["cut_type"] = get_cut_prompt_type(index, resolved_count)
+        templates.append(template)
+    return templates
 DEV_RELOAD_WATCH_FILES = (
     Path(__file__).resolve(),
     TEMPLATES_DIR / "index.html",
@@ -137,6 +236,104 @@ app.mount("/latest_videos", StaticFiles(directory=LATEST_VIDEOS_DIR), name="late
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 
+@app.on_event("startup")
+def log_registered_routes_on_startup() -> None:
+    for route in app.routes:
+        methods = getattr(route, "methods", None)
+        path = getattr(route, "path", None)
+        if not methods or not path:
+            continue
+        for method in sorted(methods):
+            if method == "HEAD":
+                continue
+            flush_server_log(f"[registered-route] {method} {path}")
+            if method == "POST" and path == "/generate-video-clip":
+                flush_server_log("[registered-route] POST /generate-video-clip confirmed")
+            if method == "POST" and path == "/debug-ping-video":
+                flush_server_log("[registered-route] POST /debug-ping-video confirmed")
+    public_base_url = get_public_base_url()
+    flush_server_log(f"[public-base-url-active] {public_base_url or '(not configured)'}")
+
+
+@app.middleware("http")
+async def log_generate_video_clip_requests(request: Request, call_next):
+    if request.method == "POST" and request.url.path in {"/generate-video-clip", "/debug-ping-video"}:
+        flush_server_log(f"[api-generate-video-entered] POST {request.url.path}")
+        flush_server_log(f"[api-request-url] {request.url}")
+        client_host = request.client.host if request.client else "unknown"
+        flush_server_log(f"[api-request-client] {client_host}")
+    response = await call_next(request)
+    return response
+
+
+@app.exception_handler(RequestValidationError)
+async def generate_video_validation_exception_handler(request: Request, exc: RequestValidationError):
+    if request.url.path == "/generate-video-clip":
+        detail = json.dumps(exc.errors(), ensure_ascii=False)
+        flush_server_log("[generate-video-start]")
+        flush_server_log("project_id: (request validation failed)")
+        flush_server_log(f"validation_errors: {detail}")
+        log_generate_video_failed(
+            cut_id="unknown",
+            provider="unknown",
+            error=detail,
+            error_type="RequestValidationError",
+            exc=exc,
+        )
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
+@app.middleware("http")
+async def log_generated_clips_range_errors(request: Request, call_next):
+    response = await call_next(request)
+    if response.status_code != 416:
+        return response
+
+    path = request.url.path
+    if not path.startswith("/generated_clips/"):
+        return response
+
+    relative = path.removeprefix("/generated_clips/").split("?", 1)[0]
+    file_path = GENERATED_CLIPS_DIR / relative
+    exists = file_path.exists()
+    file_size = file_path.stat().st_size if exists else 0
+    range_header = request.headers.get("range", "")
+    validation = validate_playable_mp4(file_path) if exists else {"valid": False, "errors": ["missing"], "duration_seconds": None}
+    metadata = read_json_file(file_path.with_suffix(".json")) if file_path.with_suffix(".json").exists() else {}
+    if not metadata:
+        cut_number = find_cut_number(file_path)
+        if cut_number:
+            job_id = next(
+                (parent.name for parent in file_path.parents if parent.parent == GENERATED_CLIPS_DIR),
+                "",
+            )
+            if job_id:
+                metadata = read_json_file(GENERATED_CLIPS_DIR / job_id / f"cut_{cut_number}_clip_manifest.json") or {}
+
+    print("[static] 416 Requested Range Not Satisfiable:")
+    print(f"  url: {path}")
+    print(f"  file_path: {file_path}")
+    print(f"  exists: {exists}")
+    print(f"  file_size: {file_size}")
+    print(f"  range: {range_header or '(none)'}")
+    print(f"  duration: {validation.get('duration_seconds')}")
+    print(f"  validation_errors: {validation.get('errors')}")
+    print(f"  cut_metadata: {json.dumps(metadata, ensure_ascii=False)[:500]}")
+    return response
+
+
+@app.middleware("http")
+async def normalize_request_path_slashes(request: Request, call_next):
+    scope_path = request.scope.get("path", "")
+    if "\\" in scope_path:
+        normalized_path = scope_path.replace("\\", "/")
+        while len(normalized_path) > 1 and "//" in normalized_path[1:]:
+            normalized_path = normalized_path[0] + normalized_path[1:].replace("//", "/")
+        request.scope["path"] = normalized_path
+        flush_server_log(f"[path-normalized] {scope_path} -> {normalized_path}")
+    return await call_next(request)
+
+
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
     if isinstance(exc, HTTPException):
@@ -145,7 +342,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 
 class CutPromptItem(BaseModel):
-    cut_number: int = Field(..., ge=1, le=5)
+    cut_number: int = Field(..., ge=1, le=MAX_CUT_COUNT)
     cut_type: str = ""
     scene_description: str = ""
     narration: str = ""
@@ -159,6 +356,7 @@ class GenerateCutPromptsRequest(BaseModel):
     style: str = Field(default="", description="영상 스타일")
     summary: str = Field(default="", description="Storyline 전체 요약")
     cut_flow: list[Any] = Field(..., min_length=1, description="Storyline 컷 흐름")
+    cut_count: int | None = Field(default=None, ge=MIN_CUT_COUNT, le=MAX_CUT_COUNT)
     selected_project: str = DEFAULT_PROJECT_SLUG
 
 class GenerateCutPromptsResponse(BaseModel):
@@ -180,7 +378,7 @@ class StorylineScriptPayload(BaseModel):
     topic: str = ""
     summary: str = ""
     story_arc: str = ""
-    cut_flow: list[str] = Field(default_factory=list)
+    cut_flow: list[Any] = Field(default_factory=list)
     cut_numbers: list[int] | None = None
 
 
@@ -188,6 +386,7 @@ class VideoPlanRequest(BaseModel):
     topic: str = Field(..., min_length=1, description="영상 주제")
     style: str = Field(..., min_length=1, description="영상 스타일")
     duration: int = Field(..., ge=5, description="전체 영상 길이(초)")
+    cut_count: int | None = Field(default=None, ge=MIN_CUT_COUNT, le=MAX_CUT_COUNT)
     character_name: str = DEFAULT_ACTIVE_CHARACTER
     image_provider: str = Field(default="openai", description="Storyboard image provider: openai, replicate, or mock")
     selected_project: str = DEFAULT_PROJECT_SLUG
@@ -202,12 +401,21 @@ class ProjectCreateRequest(BaseModel):
     project: str = Field(..., min_length=1, max_length=80)
 
 
-class StorylineScriptPayload(BaseModel):
-    topic: str = ""
-    summary: str = ""
-    story_arc: str = ""
-    cut_flow: list[str] = Field(default_factory=list)
-    cut_numbers: list[int] | None = None
+class UpdateProjectProvidersRequest(BaseModel):
+    selected_project: str = DEFAULT_PROJECT_SLUG
+    image_provider: str | None = None
+    video_provider: str | None = None
+    audio_provider: str | None = None
+    style: str | None = None
+    duration: int | None = Field(default=None, ge=5)
+    cut_count: int | None = Field(default=None, ge=MIN_CUT_COUNT, le=MAX_CUT_COUNT)
+
+
+class AudioSubtitleCutText(BaseModel):
+    cut_id: str = ""
+    cut_number: int = Field(..., ge=1)
+    source: str = "storyline"
+    text: str = Field(..., min_length=1)
 
 
 class GenerateScriptRequest(BaseModel):
@@ -235,6 +443,7 @@ class GenerateScenarioOptionsRequest(BaseModel):
     topic: str = Field(..., min_length=1, description="영상 주제")
     style: str = Field(default="", description="영상 스타일")
     duration: int = Field(default=15, ge=5, description="전체 영상 길이(초)")
+    cut_count: int | None = Field(default=None, ge=MIN_CUT_COUNT, le=MAX_CUT_COUNT)
     selected_project: str = DEFAULT_PROJECT_SLUG
 
 
@@ -243,6 +452,7 @@ class GenerateScenarioOptionsResponse(BaseModel):
     topic: str
     style: str
     duration: int
+    cut_count: int = DEFAULT_CUT_COUNT
     scenarios: list[ScenarioOption]
 
 
@@ -254,6 +464,7 @@ class SelectScenarioRequest(BaseModel):
 class GenerateStorylineRequest(BaseModel):
     topic: str = Field(..., min_length=1, description="영상 주제")
     style: str = Field(default="", description="영상 스타일 힌트")
+    cut_count: int | None = Field(default=None, ge=MIN_CUT_COUNT, le=MAX_CUT_COUNT)
     scenario: ScenarioOption | None = None
 
 
@@ -267,16 +478,47 @@ class GenerateStorylineResponse(BaseModel):
 class GenerateVoiceRequest(BaseModel):
     selected_project: str = DEFAULT_PROJECT_SLUG
     selected_cuts: list[int] | None = None
+    storyboard_id: str | None = None
+    text_map: list[AudioSubtitleCutText] | None = None
+    force_short_dialogue: bool = False
+    audio_subtitle_only: bool = False
 
 
 class GenerateSubtitleRequest(BaseModel):
     selected_project: str = DEFAULT_PROJECT_SLUG
     selected_cuts: list[int] | None = None
+    storyboard_id: str | None = None
+    text_map: list[AudioSubtitleCutText] | None = None
+    force_short_dialogue: bool = False
+    audio_subtitle_only: bool = False
 
 
 class FinalExportRequest(BaseModel):
     selected_project: str = DEFAULT_PROJECT_SLUG
     selected_cuts: list[int] | None = None
+    source: str | None = None
+
+
+class AgentAudioSubtitleRunRequest(BaseModel):
+    selected_project: str = DEFAULT_PROJECT_SLUG
+    selected_cuts: list[int] | None = None
+    storyboard_id: str | None = None
+    force_short_dialogue: bool = True
+
+
+class AgentExportFinalRequest(BaseModel):
+    selected_project: str = DEFAULT_PROJECT_SLUG
+    selected_cuts: list[int] | None = None
+    source: str = "manual_final_export"
+
+
+class AgentPipelineGenerateAllRequest(BaseModel):
+    selected_project: str = DEFAULT_PROJECT_SLUG
+    selected_cuts: list[int] | None = None
+    storyboard_id: str | None = None
+    force_short_dialogue: bool = False
+    run_final_export: bool = True
+    export_source: str = "generate_all"
 
 
 class UpdateMotionPromptRequest(BaseModel):
@@ -602,6 +844,7 @@ class ReferenceFrame(BaseModel):
 
 class CutPlan(BaseModel):
     cut_number: int
+    cut_id: str = ""
     cut_type: str = "EMOTIONAL"
     visual_style_lock: dict[str, str] = Field(default_factory=dict)
     action_state: str = "OBSERVING"
@@ -676,6 +919,9 @@ class CutPlan(BaseModel):
     image_prompt: str
     acting_layer_prompt: str = ""
     cut_story_beat: str = ""
+    linked_video_filename: str = ""
+    linked_video_path: str = ""
+    video_binding_valid: bool = False
     image_url: str
     image_status: str
     image_error: str | None = None
@@ -687,6 +933,7 @@ class VideoPlanResponse(BaseModel):
     topic: str
     style: str
     duration: int
+    cut_count: int = DEFAULT_CUT_COUNT
     master_character: MasterCharacter | None = None
     scene_context: SceneContext | None = None
     reference_character: ReferenceCharacter | None = None
@@ -697,7 +944,7 @@ class VideoPlanResponse(BaseModel):
 
 
 class SetReferenceCharacterRequest(BaseModel):
-    cut_number: int = Field(..., ge=1, le=5)
+    cut_number: int = Field(..., ge=1, le=MAX_CUT_COUNT)
     image_url: str = Field(..., min_length=1)
 
 
@@ -758,7 +1005,7 @@ class VideoJobResponse(BaseModel):
 
 class GenerateVideoClipRequest(BaseModel):
     cut_number: int = Field(..., ge=1)
-    cut_id: int | None = Field(default=None, ge=1)
+    cut_id: str | int | None = Field(default=None)
     selected_cut: int | None = Field(default=None, ge=1)
     cut_type: str = "UNKNOWN"
     visual_style_lock: dict[str, str] = Field(default_factory=dict)
@@ -795,6 +1042,20 @@ class GenerateSequentiallyRequest(BaseModel):
     selected_project: str = DEFAULT_PROJECT_SLUG
 
 
+class GenerateVideoClientFailureLog(BaseModel):
+    project_id: str = ""
+    storyboard_id: str = ""
+    cut_id: str = ""
+    cut_number: int = Field(default=0, ge=0)
+    cut_index: int | None = Field(default=None, ge=0)
+    provider: str = ""
+    image_path: str = ""
+    video_prompt: str = ""
+    error_message: str = ""
+    error_type: str = "ClientValidationError"
+    source: str = "frontend"
+
+
 class GenerateVideoClipResponse(BaseModel):
     job_id: str
     status: str
@@ -814,6 +1075,12 @@ class GenerateVideoClipResponse(BaseModel):
     motion_enabled: bool = True
     timeline_type: str = "motion"
     still_hold_duration: float = STILL_HOLD_DURATION_SECONDS
+    cut_id: str = ""
+    video_filename: str = ""
+    file_size: int = 0
+    duration: float | None = None
+    prompt_hash: str = ""
+    created_at: str = ""
 
 
 class MotionSelectionRequest(BaseModel):
@@ -856,6 +1123,11 @@ class ProjectRestoreResponse(BaseModel):
     job_id: str | None = None
     scenario_options: list[ScenarioOption] = Field(default_factory=list)
     current_scenario: ScenarioOption | None = None
+    storyline: GenerateStorylineResponse | None = None
+    cut_prompts: GenerateCutPromptsResponse | None = None
+    image_provider: str | None = None
+    video_provider: str | None = None
+    audio_provider: str | None = None
 
 
 class CleanupArchiveRequest(BaseModel):
@@ -876,6 +1148,7 @@ class AudioPipelineJobRequest(BaseModel):
     cuts: list[AudioPipelineCutInput] = Field(default_factory=list)
     use_mock: bool = True
     selected_project: str = DEFAULT_PROJECT_SLUG
+    selected_cuts: list[int] | None = None
 
 
 class GenerateNarrationResponse(BaseModel):
@@ -906,6 +1179,10 @@ class AssembleFinalVideoResponse(BaseModel):
     audio_pipeline: dict
     render_manifest_url: str = ""
     message: str
+    success: bool = True
+    final_timeline: list[dict] = Field(default_factory=list)
+    final_video_path: str = ""
+    duration: float | None = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -929,6 +1206,16 @@ def health_check():
     return {"status": "ok", "server_port": SERVER_PORT}
 
 
+@app.get("/api/public-config")
+def get_public_config():
+    public_base_url = get_public_base_url()
+    return {
+        "public_base_url": public_base_url,
+        "replicate_requires_public_url": True,
+        "ngrok_required_message": REPLICATE_NGROK_REQUIRED_MESSAGE,
+    }
+
+
 def normalize_dashboard_state(status: str | None) -> str:
     normalized = (status or "pending").strip().lower()
     if normalized in {"completed", "mock_completed", "ready", "generated", "ok"}:
@@ -943,7 +1230,7 @@ def normalize_dashboard_state(status: str | None) -> str:
 
 
 def detect_ngrok_status() -> dict:
-    public_url = (os.getenv("PUBLIC_BASE_URL") or os.getenv("NGROK_URL") or "").strip()
+    public_url = get_public_base_url()
     online = public_url.startswith(("http://", "https://"))
     return {
         "online": online,
@@ -955,7 +1242,7 @@ def detect_ngrok_status() -> dict:
 def build_provider_status_snapshot() -> dict:
     replicate_token = bool(os.getenv("REPLICATE_API_TOKEN"))
     openai_token = bool(os.getenv("OPENAI_API_KEY"))
-    public_url = (os.getenv("PUBLIC_BASE_URL") or os.getenv("NGROK_URL") or "").strip()
+    public_url = get_public_base_url()
 
     replicate_video = "ready" if replicate_token and public_url else "waiting"
     if replicate_token and not public_url:
@@ -1155,18 +1442,28 @@ def build_files_status(
     }
 
 
-def build_dashboard_snapshot(job_id: str | None = None, selected_project: str | None = None) -> dict:
+def build_dashboard_snapshot(
+    job_id: str | None = None,
+    selected_project: str | None = None,
+    *,
+    explicit_selected_cuts: list[int] | None = None,
+) -> dict:
     resolved_job_id = job_id or resolve_latest_job_id()
     project_dir: Path | None = None
+    project_slug_for_run = ""
     if selected_project:
         try:
             project_slug_for_run, project_dir = resolve_project_dir(selected_project)
         except HTTPException:
             project_dir = None
     current_run = load_current_run(project_dir) if project_dir else {}
+    resolved_dashboard_cuts: list[int] = []
     if project_dir:
         motion_selection = load_project_motion_selection(project_slug_for_run, project_dir)
-        selected_cuts = selected_cuts_from_motion_selection(motion_selection)
+        selected_cuts = explicit_selected_cuts or selected_cuts_from_motion_selection(motion_selection)
+        if not selected_cuts:
+            selected_cuts = list(current_run.get("selected_cuts") or [])
+        resolved_dashboard_cuts = list(selected_cuts or [])
         if selected_cuts:
             metadata = load_project_metadata(project_slug_for_run, project_dir)
             current_run = ensure_current_run(
@@ -1261,6 +1558,40 @@ def build_dashboard_snapshot(job_id: str | None = None, selected_project: str | 
         else:
             audio_pipeline_status["state"] = "waiting"
 
+    hyperframe_timeline_status: dict = {}
+    if project_dir and project_slug_for_run:
+        try:
+            hyperframe_timeline_status = build_hyperframe_timeline_status(
+                project_slug_for_run,
+                project_dir,
+                selected_cuts=explicit_selected_cuts or resolved_dashboard_cuts or None,
+            )
+        except Exception as error:  # noqa: BLE001 - dashboard should stay available
+            import traceback
+
+            print("[selected-cuts-error]")
+            print(f"  error: {error}")
+            traceback.print_exc()
+            hyperframe_timeline_status = {
+                "selected_cut_error": True,
+                "error": str(error),
+                "selected_cut_ids": [],
+                "selected_cut_numbers": resolved_dashboard_cuts,
+                "timeline_items": [],
+                "timeline_item_count": 0,
+                "expected_count": len(resolved_dashboard_cuts),
+                "missing_timeline_cut_ids": [],
+                "missing_video_cut_ids": [],
+                "missing_audio_cut_ids": [],
+                "missing_subtitle_cut_ids": [],
+                "missing_image_cut_ids": [],
+                "missing_details": [],
+                "video_ready_count": 0,
+                "audio_ready_count": 0,
+                "subtitle_ready_count": 0,
+                "can_final_export": False,
+            }
+
     return {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "job_id": resolved_job_id or "",
@@ -1291,6 +1622,7 @@ def build_dashboard_snapshot(job_id: str | None = None, selected_project: str | 
         "audio_pipeline": audio_pipeline_status,
         "files": files_status,
         "current_run": current_run,
+        "hyperframe_timeline_status": hyperframe_timeline_status,
         "system": {
             "server": {"online": True, "state": "completed", "port": SERVER_PORT},
             "ngrok": ngrok,
@@ -1347,12 +1679,121 @@ def build_motion_shots_summary(manifest: dict) -> dict:
 def get_dashboard_status(
     job_id: str | None = Query(default=None),
     selected_project: str | None = Query(default=None),
+    selected_cuts: str | None = Query(default=None),
 ):
-    return build_dashboard_snapshot(job_id, selected_project)
+    explicit_selected_cuts: list[int] | None = None
+    if selected_cuts:
+        explicit_selected_cuts = dedupe_preserve_order(
+            [int(part.strip()) for part in selected_cuts.split(",") if part.strip().isdigit()]
+        )
+    return build_dashboard_snapshot(
+        job_id,
+        selected_project,
+        explicit_selected_cuts=explicit_selected_cuts,
+    )
 
 
 def clip_url_for_path(path: Path) -> str:
     return f"/generated_clips/{path.relative_to(GENERATED_CLIPS_DIR)}"
+
+
+def cleanup_invalid_cut_mp4_files(cut_dir: Path, *, keep_path: Path | None = None) -> None:
+    if not cut_dir.exists():
+        return
+
+    keep_resolved = keep_path.resolve() if keep_path else None
+    for candidate in cut_dir.glob("*.mp4"):
+        if keep_resolved and candidate.resolve() == keep_resolved:
+            continue
+        validation = validate_playable_mp4(candidate)
+        if not validation["valid"]:
+            quarantine_invalid_mp4(candidate, reason=validation["errors"])
+
+
+def finalize_job_cut_video(
+    *,
+    job_id: str,
+    cut_number: int,
+    source_path: Path,
+    provider: str,
+    prompt: str,
+    project_id: str,
+    storyboard_id: str,
+    cut_index: int | None,
+) -> dict:
+    source_path = Path(source_path)
+    validation = validate_playable_mp4(source_path)
+    if not validation["valid"]:
+        quarantine_invalid_mp4(source_path, reason=validation["errors"])
+        detail = "; ".join(validation["errors"])
+        raise HTTPException(
+            status_code=400,
+            detail=f"영상 파일이 정상 생성되지 않았습니다. 다시 생성해주세요. ({detail})",
+        )
+
+    cut_name = f"cut_{cut_number:02d}"
+    cut_dir = GENERATED_CLIPS_DIR / job_id / cut_name
+    cut_dir.mkdir(parents=True, exist_ok=True)
+    created_at = datetime.now(timezone.utc)
+    timestamp = created_at.strftime("%Y%m%d_%H%M%S")
+    dest_name = f"{cut_name}_{timestamp}.mp4"
+    dest_path = cut_dir / dest_name
+
+    shutil.copy2(source_path, dest_path)
+    dest_validation = validate_playable_mp4(dest_path)
+    if not dest_validation["valid"]:
+        quarantine_invalid_mp4(dest_path, reason=dest_validation["errors"])
+        raise HTTPException(
+            status_code=400,
+            detail="영상 파일이 정상 생성되지 않았습니다. 다시 생성해주세요.",
+        )
+
+    cleanup_invalid_cut_mp4_files(cut_dir, keep_path=dest_path)
+    placeholder = cut_dir / f"{cut_name}.mp4"
+    if placeholder.exists() and placeholder.resolve() != dest_path.resolve():
+        placeholder_validation = validate_playable_mp4(placeholder)
+        if not placeholder_validation["valid"]:
+            quarantine_invalid_mp4(placeholder, reason=placeholder_validation["errors"])
+
+    for orphan in (GENERATED_CLIPS_DIR / job_id).glob(f"{cut_name}*.mp4"):
+        if orphan.is_file() and orphan.parent == (GENERATED_CLIPS_DIR / job_id):
+            orphan_validation = validate_playable_mp4(orphan)
+            if not orphan_validation["valid"]:
+                quarantine_invalid_mp4(orphan, reason=orphan_validation["errors"])
+
+    prompt_hash = compute_prompt_hash(prompt)
+    version = int(created_at.timestamp())
+    base_url = clip_url_for_path(dest_path)
+    video_url = cache_bust_video_url(base_url, version=version)
+    cut_id = format_cut_id(cut_number)
+    sidecar = {
+        "kind": "cut",
+        "project_id": project_id,
+        "storyboard_id": storyboard_id,
+        "job_id": job_id,
+        "cut_id": cut_id,
+        "cut_number": cut_number,
+        "cut_index": cut_index,
+        "provider": provider,
+        "prompt_hash": prompt_hash,
+        "source_prompt": prompt,
+        "video_path": str(dest_path),
+        "video_url": video_url,
+        "video_filename": dest_name,
+        "file_size": dest_validation["file_size_bytes"],
+        "duration": dest_validation["duration_seconds"],
+        "created_at": created_at.isoformat(),
+        "updated_at": created_at.isoformat(),
+    }
+    write_json(dest_path.with_suffix(".json"), sidecar)
+
+    return {
+        **sidecar,
+        "clip_path": str(dest_path),
+        "clip_url": base_url,
+        "latest_video_url": video_url,
+        "validation": dest_validation,
+    }
 
 
 def generated_output_url_for_path(path: Path) -> str:
@@ -1534,12 +1975,12 @@ def create_still_hold_clip(
             subprocess.run(command, capture_output=True, text=True, check=False)
 
     if not is_usable_mp4(clip_path):
-        placeholder = (
-            f"MOCK_STILL_HOLD cut={cut_number}\n"
-            f"duration={hold_duration}\n"
-            f"image={image_path}\n"
+        if clip_path.exists():
+            quarantine_invalid_mp4(clip_path, reason="still hold ffmpeg failed")
+        raise RuntimeError(
+            f"Still hold clip for CUT {cut_number} could not be encoded as a playable mp4. "
+            "Check ffmpeg installation and storyboard image path."
         )
-        clip_path.write_bytes(placeholder.encode("utf-8"))
 
     manifest = {
         "job_id": job_id,
@@ -1579,11 +2020,25 @@ def find_cut_video_path(job_id: str, cut_number: int) -> Path | None:
         return None
 
     cut_name = f"cut_{cut_number:02d}"
-    preferred = [
-        clips_dir / cut_name / f"{cut_name}.mp4",
-        clips_dir / f"{cut_name}.mp4",
-        clips_dir / f"{cut_name}_mock.mp4",
-    ]
+    preferred: list[Path] = []
+    cut_dir = clips_dir / cut_name
+    if cut_dir.exists():
+        timestamped = sorted(
+            [path for path in cut_dir.glob(f"{cut_name}_*.mp4") if is_usable_mp4(path)],
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )
+        preferred.extend(timestamped)
+    preferred.extend(
+        [
+            cut_dir / f"{cut_name}.mp4",
+            clips_dir / f"{cut_name}.mp4",
+            clips_dir / f"cut_{cut_number}_mock.mp4",
+            clips_dir / f"cut_{cut_number}_replicate.mp4",
+            clips_dir / f"{cut_name}_mock.mp4",
+            clips_dir / f"{cut_name}_replicate.mp4",
+        ]
+    )
     for candidate in preferred:
         if is_usable_mp4(candidate):
             return candidate
@@ -1781,7 +2236,8 @@ def latest_video_url_for_path(path: Path) -> str:
 def project_url_for_path(path: Path) -> str:
     resolved_path = path.resolve()
     projects_root = PROJECTS_DIR.resolve()
-    return f"/projects/{resolved_path.relative_to(projects_root)}"
+    relative = resolved_path.relative_to(projects_root).as_posix()
+    return f"/projects/{relative}"
 
 
 def list_project_entries() -> list[dict]:
@@ -1848,6 +2304,9 @@ def project_asset_dirs(project_dir: Path) -> dict[str, Path]:
     dirs = {
         "images": project_dir / "images",
         "clips": project_dir / "clips",
+        "generated_cuts": project_dir / "generated_cuts",
+        "selected_cuts": project_dir / "selected_cuts",
+        "full_video": project_dir / "full_video",
         "final": project_dir / "final",
         "audio": project_dir / "audio",
         "subtitles": project_dir / "subtitles",
@@ -1865,6 +2324,78 @@ def project_json_path(project_dir: Path) -> Path:
 def is_placeholder_image_url(url: str | None) -> bool:
     normalized = (url or "").split("?", 1)[0].strip()
     return normalized.startswith("/static/placeholders/")
+
+
+def is_legacy_generated_image_fallback(url: str | None, cut_number: int) -> bool:
+    normalized = (url or "").split("?", 1)[0].strip()
+    return normalized == f"/generated_images/cut_{cut_number}.png"
+
+
+def normalize_storyboard_cut_image(
+    *,
+    cut_number: int,
+    image_url: str,
+    image_status: str,
+    image_error: str | None,
+    output_path: Path,
+) -> tuple[str, str, str | None]:
+    status = (image_status or "").strip().lower() or "failed"
+    error = (image_error or "").strip() or None
+    normalized_url = normalize_web_path((image_url or "").split("?", 1)[0].strip(), keep_query=False)
+    file_exists = output_path.exists() and output_path.stat().st_size > 256
+
+    if is_legacy_generated_image_fallback(normalized_url, cut_number) or is_placeholder_image_url(normalized_url):
+        normalized_url = ""
+
+    if status == "generated":
+        if file_exists:
+            try:
+                resolved = project_url_for_path(output_path)
+                stamp = int(output_path.stat().st_mtime)
+                return f"{resolved.split('?', 1)[0]}?v={stamp}", "generated", error
+            except ValueError:
+                pass
+        message = error or "Image file was not saved"
+        print(f"[storyboard] cut {cut_number} image missing on disk: {output_path}")
+        return "", "failed", message
+
+    if status == "mock":
+        if file_exists:
+            try:
+                resolved = project_url_for_path(output_path)
+                return f"{resolved.split('?', 1)[0]}?v={int(output_path.stat().st_mtime)}", "mock", error
+            except ValueError:
+                pass
+        if normalized_url and not is_legacy_generated_image_fallback(normalized_url, cut_number):
+            return normalize_web_path(image_url, keep_query=True), "mock", error
+        return "", "failed", error or "Mock image unavailable"
+
+    if file_exists:
+        try:
+            resolved = project_url_for_path(output_path)
+            return f"{resolved.split('?', 1)[0]}?v={int(output_path.stat().st_mtime)}", "generated", error
+        except ValueError:
+            pass
+
+    if status == "failed":
+        return "", "failed", error or "Image generation failed"
+
+    if normalized_url and not is_legacy_generated_image_fallback(normalized_url, cut_number):
+        return normalize_web_path(image_url, keep_query=True), status, error
+
+    return "", "failed", error or "Image unavailable"
+
+
+def log_storyboard_cut_images(cuts: list) -> None:
+    for cut in cuts:
+        cut_number = getattr(cut, "cut_number", None) or (cut.get("cut_number") if isinstance(cut, dict) else 0)
+        image_url = getattr(cut, "image_url", None) if not isinstance(cut, dict) else cut.get("image_url")
+        image_status = getattr(cut, "image_status", None) if not isinstance(cut, dict) else cut.get("image_status")
+        image_error = getattr(cut, "image_error", None) if not isinstance(cut, dict) else cut.get("image_error")
+        print(
+            f"[storyboard] cut {cut_number} image: status={image_status or 'unknown'} "
+            f"url={image_url or '(none)'} error={image_error or ''}"
+        )
 
 
 def clear_project_storyboard_image_cache(project_slug: str, project_dir: Path) -> None:
@@ -1910,6 +2441,11 @@ def update_project_metadata(
     *,
     topic: str | None = None,
     duration: int | None = None,
+    cut_count: int | None = None,
+    style: str | None = None,
+    image_provider: str | None = None,
+    video_provider: str | None = None,
+    audio_provider: str | None = None,
     image: dict | None = None,
     clip: dict | None = None,
     final_video: str | None = None,
@@ -1920,8 +2456,18 @@ def update_project_metadata(
         metadata["topic"] = topic
         metadata["last_topic"] = topic
         metadata["last_generated_at"] = metadata["updated_at"]
+    if style is not None:
+        metadata["style"] = style.strip()
     if duration is not None:
         metadata["duration"] = duration
+    if cut_count is not None:
+        metadata["cut_count"] = normalize_cut_count(cut_count, duration)
+    if image_provider is not None:
+        metadata["image_provider"] = image_provider.strip().lower()
+    if video_provider is not None:
+        metadata["video_provider"] = video_provider.strip().lower()
+    if audio_provider is not None:
+        metadata["audio_provider"] = audio_provider.strip().lower()
     if image:
         metadata["images"] = append_unique_project_item(list(metadata.get("images") or []), image, "path")
     if clip:
@@ -1994,7 +2540,7 @@ def rebuild_plan_from_storyboard(project_slug: str, project_dir: Path) -> dict |
         cut_number = int(item.get("cut") or 0)
         image_meta = images_by_cut.get(cut_number, {})
         image_path = project_dir / "images" / f"cut_{cut_number}.png"
-        image_url = (image_meta.get("url") or "").split("?", 1)[0]
+        image_url = normalize_web_path((image_meta.get("url") or "").split("?", 1)[0], keep_query=False)
         if not image_url and image_path.exists():
             image_url = project_url_for_path(image_path)
         if image_url and image_path.exists():
@@ -2055,7 +2601,7 @@ def rebuild_plan_from_storyboard(project_slug: str, project_dir: Path) -> dict |
                 "pacing": "steady",
                 "image_prompt": description,
                 "image_url": image_url,
-                "sample_image_url": image_url.split("?", 1)[0] if image_url else f"/generated_images/cut_{cut_number}.png",
+                "sample_image_url": image_url.split("?", 1)[0] if image_url else "",
                 "image_status": image_status,
                 "image_error": None,
                 "recommended_duration": per_cut_duration,
@@ -2123,27 +2669,70 @@ def merge_plan_with_project_assets(plan: dict, project_slug: str, project_dir: P
 
         image = images_by_cut.get(cut_number)
         image_path = project_dir / "images" / f"cut_{cut_number}.png"
-        image_url = (image or {}).get("image_url") or ""
+        image_url = normalize_web_path((image or {}).get("image_url") or cut.get("image_url") or "", keep_query=True)
         if not image_url and image_path.exists():
             image_url = project_url_for_path(image_path)
         if image_url:
             base_url = image_url.split("?", 1)[0]
-            stamp = int(image_path.stat().st_mtime) if image_path.exists() else int(time.time())
-            cut["image_url"] = f"{base_url}?v={stamp}"
-            cut["sample_image_url"] = base_url
-            if is_placeholder_image_url(base_url):
-                if cut.get("image_status") not in ("failed", "mock"):
-                    cut["image_status"] = cut.get("image_status") or "fallback"
-            elif image_path.exists() or base_url.startswith(("/projects/", "/generated_images/")):
-                if cut.get("image_status") != "failed":
+            if is_legacy_generated_image_fallback(base_url, cut_number) or (
+                not image_path.exists() and base_url.startswith("/generated_images/")
+            ):
+                cut["image_url"] = ""
+                cut["sample_image_url"] = ""
+                cut["image_status"] = "failed"
+                cut["image_error"] = cut.get("image_error") or "Image file missing"
+            elif image_path.exists():
+                stamp = int(image_path.stat().st_mtime)
+                cut["image_url"] = f"{base_url}?v={stamp}"
+                cut["sample_image_url"] = base_url
+                if is_placeholder_image_url(base_url):
+                    if cut.get("image_status") not in ("failed", "mock"):
+                        cut["image_status"] = cut.get("image_status") or "fallback"
+                elif cut.get("image_status") != "failed":
                     cut["image_status"] = "generated"
                     cut["image_error"] = None
+            elif base_url.startswith(("/projects/", "/generated_images/")):
+                cut["image_url"] = ""
+                cut["sample_image_url"] = ""
+                cut["image_status"] = "failed"
+                cut["image_error"] = cut.get("image_error") or "Image file missing"
             else:
+                cut["image_url"] = image_url
+                cut["sample_image_url"] = base_url
                 cut["image_status"] = cut.get("image_status") or "fallback"
+        elif not image_path.exists() and cut.get("image_status") == "generated":
+            cut["image_url"] = ""
+            cut["sample_image_url"] = ""
+            cut["image_status"] = "failed"
+            cut["image_error"] = cut.get("image_error") or "Image file missing"
 
     plan["topic"] = plan.get("topic") or storyboard.get("topic") or metadata.get("topic") or metadata.get("last_topic") or ""
     plan["style"] = plan.get("style") or storyboard.get("style") or metadata.get("style") or ""
     plan["duration"] = int(plan.get("duration") or metadata.get("duration") or 10)
+    storyboard_id = current_storyboard_id(project_dir)
+    video_paths = collect_project_cut_video_paths(
+        project_dir,
+        project_slug=project_slug,
+        storyboard_id=storyboard_id,
+    )
+    for cut in plan.get("cuts") or []:
+        if not isinstance(cut, dict):
+            continue
+        cut_number = int(cut.get("cut_number") or 0)
+        if cut_number <= 0:
+            continue
+        cut_id = format_cut_id(cut_number)
+        cut["cut_id"] = cut_id
+        video_path = video_paths.get(cut_number)
+        if not video_path:
+            cut["linked_video_filename"] = ""
+            cut["linked_video_path"] = ""
+            cut["video_binding_valid"] = False
+            continue
+        sidecar = read_json_file(video_path.with_suffix(".json")) or {}
+        cut["linked_video_filename"] = video_path.name
+        cut["linked_video_path"] = str(video_path)
+        cut["video_binding_valid"] = clip_metadata_matches_project(sidecar, project_slug, storyboard_id)
     return plan
 
 
@@ -2222,6 +2811,7 @@ def ensure_current_run(
     selected_cuts: list[int],
     *,
     target_duration: float | None = None,
+    cut_count: int | None = None,
     project: str | None = None,
     topic: str | None = None,
     style: str | None = None,
@@ -2248,6 +2838,7 @@ def ensure_current_run(
     should_reset = reset_if_changed and (
         not selected_cuts_match(run.get("selected_cuts"), selected_cuts) or target_changed or identity_changed
     )
+    resolved_cut_count = normalize_cut_count(cut_count or len(selected_cuts), int(target) if target else None)
     if not run or should_reset:
         run = {
             "run_id": uuid4().hex,
@@ -2256,6 +2847,7 @@ def ensure_current_run(
             "style": style_value,
             "storyboard_id": storyboard_value,
             "selected_cuts": selected_cuts,
+            "cut_count": resolved_cut_count,
             "target_duration": target,
             "per_cut_duration": round(target / len(selected_cuts), 3) if selected_cuts and target else 0,
             "video_done": [],
@@ -2273,6 +2865,8 @@ def ensure_current_run(
         run["style"] = style_value
         run["storyboard_id"] = storyboard_value
         run["selected_cuts"] = selected_cuts
+        if cut_count is not None:
+            run["cut_count"] = resolved_cut_count
         if target_duration is not None:
             run["target_duration"] = target
         target = float(run.get("target_duration") or 0)
@@ -2299,15 +2893,79 @@ def build_restored_video_cuts(
     completed_by_cut: dict[int, dict] = {}
     job_ids: set[str] = set()
     run_video_done = set(int(cut) for cut in (current_run or {}).get("video_done", []))
+    project_slug = project_dir.name
+    storyboard_id = current_storyboard_id(project_dir)
+
+    for collection in ("generated_cuts", "clips"):
+        directory = project_dir / collection
+        if not directory.is_dir():
+            continue
+        candidates: list[tuple[int, int, Path, dict]] = []
+        for video_path in directory.glob("*.mp4"):
+            if not is_usable_mp4(video_path):
+                continue
+            cut_number = find_cut_number(video_path)
+            if cut_number <= 0:
+                continue
+            data = read_json_file(video_path.with_suffix(".json")) or {}
+            if not clip_metadata_matches_project(data, project_slug, storyboard_id):
+                continue
+            rank, mtime = cut_video_selection_rank(
+                video_path=video_path,
+                metadata=data,
+                collection=collection,
+                project_slug=project_slug,
+                storyboard_id=storyboard_id,
+            )
+            candidates.append((rank, mtime, cut_number, video_path, data))
+
+        candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        seen_cuts: set[int] = set()
+        for _rank, _mtime, cut_number, video_path, data in candidates:
+            if cut_number in seen_cuts or cut_number in completed_by_cut:
+                continue
+            seen_cuts.add(cut_number)
+            provider = data.get("provider") or "unknown"
+            if provider == "replicate":
+                status = "replicate_completed"
+            elif provider == "mock":
+                status = "mock_completed"
+            else:
+                status = "completed"
+            video_url = data.get("video_url") or data.get("latest_video_url") or project_url_for_path(video_path)
+            completed_by_cut[cut_number] = {
+                "cut_number": cut_number,
+                "cut_id": data.get("cut_id") or format_cut_id(cut_number),
+                "video_status": status,
+                "status": "completed",
+                "render_progress": 100,
+                "provider": provider,
+                "generator": provider,
+                "video_file": str(video_path),
+                "video_url": video_url,
+                "clip_duration": int(data.get("duration") or 2),
+                "estimated_render_time": max(18, int(data.get("duration") or 2) * 8),
+                "motion_enabled": resolve_motion_enabled_for_cut(cut_number, motion_selection),
+                "timeline_type": "motion"
+                if resolve_motion_enabled_for_cut(cut_number, motion_selection)
+                else "still",
+                "still_hold_duration": STILL_HOLD_DURATION_SECONDS,
+                "job_id": data.get("source_job_id") or "",
+            }
+            if data.get("source_job_id"):
+                job_ids.add(str(data["source_job_id"]))
+
     clips_dir = project_dir / "clips"
     if clips_dir.is_dir():
         for json_path in sorted(clips_dir.glob("cut_*_*.json")):
             data = read_json_file(json_path)
+            if not clip_metadata_matches_project(data, project_slug, storyboard_id):
+                continue
             video_url = data.get("video_url") or data.get("latest_video_url") or ""
             if not video_url:
                 continue
             cut_number = int(data.get("cut_number") or find_cut_number(json_path))
-            if cut_number <= 0:
+            if cut_number <= 0 or cut_number in completed_by_cut:
                 continue
             provider = data.get("provider") or "unknown"
             if provider == "replicate":
@@ -2318,6 +2976,7 @@ def build_restored_video_cuts(
                 status = "completed"
             completed_by_cut[cut_number] = {
                 "cut_number": cut_number,
+                "cut_id": data.get("cut_id") or format_cut_id(cut_number),
                 "video_status": status,
                 "status": "completed",
                 "render_progress": 100,
@@ -2395,14 +3054,39 @@ def build_restored_video_cuts(
     return restored, job_id
 
 
+def project_provider_settings(metadata: dict, merged_plan: dict | None = None, job_id: str | None = None) -> dict[str, str]:
+    plan = merged_plan or {}
+    reference_frame = plan.get("reference_frame") or {}
+    video_provider = metadata.get("video_provider")
+    if not video_provider and job_id:
+        job_manifest = read_json_file(GENERATED_CLIPS_DIR / job_id / "manifest.json")
+        video_provider = job_manifest.get("provider")
+    return {
+        "image_provider": metadata.get("image_provider") or reference_frame.get("image_provider") or "openai",
+        "video_provider": video_provider or "replicate",
+        "audio_provider": metadata.get("audio_provider") or "openai",
+    }
+
+
 def build_project_restore_payload(project_slug: str) -> ProjectRestoreResponse:
     project_slug, project_dir = resolve_project_dir(project_slug)
+    metadata = load_project_metadata(project_slug, project_dir)
     raw_plan, plan_source = load_saved_project_plan(project_slug, project_dir)
     if not raw_plan:
-        return ProjectRestoreResponse(project=project_slug, restored=False, plan_source="none")
+        providers = project_provider_settings(metadata)
+        return ProjectRestoreResponse(
+            project=project_slug,
+            restored=False,
+            plan_source="none",
+            image_provider=providers["image_provider"],
+            video_provider=providers["video_provider"],
+            audio_provider=providers["audio_provider"],
+        )
 
     merged_plan = merge_plan_with_project_assets(raw_plan, project_slug, project_dir)
     merged_plan = apply_active_character_defaults(merged_plan)
+    if not merged_plan.get("cut_count"):
+        merged_plan["cut_count"] = len(merged_plan.get("cuts") or []) or DEFAULT_CUT_COUNT
     plan = VideoPlanResponse.model_validate(merged_plan)
     motion_selection = load_project_motion_selection(project_slug, project_dir)
     if not motion_selection:
@@ -2411,10 +3095,12 @@ def build_project_restore_payload(project_slug: str) -> ProjectRestoreResponse:
         }
     selected_cuts = selected_cuts_from_motion_selection(motion_selection)
     metadata = load_project_metadata(project_slug, project_dir)
+    restore_cut_count = plan.cut_count or len(plan.cuts) or metadata.get("cut_count")
     current_run = ensure_current_run(
         project_dir,
         selected_cuts,
         target_duration=metadata.get("duration"),
+        cut_count=restore_cut_count,
         reset_if_changed=False,
     )
     if not selected_cuts_match(current_run.get("selected_cuts"), selected_cuts):
@@ -2422,6 +3108,7 @@ def build_project_restore_payload(project_slug: str) -> ProjectRestoreResponse:
             project_dir,
             selected_cuts,
             target_duration=metadata.get("duration"),
+            cut_count=restore_cut_count,
             reset_if_changed=True,
         )
     video_cuts, job_id = build_restored_video_cuts(project_dir, merged_plan, motion_selection, current_run)
@@ -2436,6 +3123,21 @@ def build_project_restore_payload(project_slug: str) -> ProjectRestoreResponse:
     current_scenario = None
     if current_scenario_payload.get("scenario"):
         current_scenario = ScenarioOption.model_validate(current_scenario_payload["scenario"])
+    storyline_payload = read_json_file(project_dir / "storyline.json")
+    storyline = None
+    if storyline_payload.get("cut_flow"):
+        try:
+            storyline = GenerateStorylineResponse.model_validate(storyline_payload)
+        except ValidationError:
+            storyline = None
+    cut_prompts_payload = read_json_file(project_dir / "cut_prompts.json")
+    cut_prompts = None
+    if cut_prompts_payload.get("cuts"):
+        try:
+            cut_prompts = GenerateCutPromptsResponse.model_validate(cut_prompts_payload)
+        except ValidationError:
+            cut_prompts = None
+    providers = project_provider_settings(metadata, merged_plan, job_id)
     return ProjectRestoreResponse(
         project=project_slug,
         restored=True,
@@ -2448,6 +3150,11 @@ def build_project_restore_payload(project_slug: str) -> ProjectRestoreResponse:
         job_id=job_id,
         scenario_options=scenario_options,
         current_scenario=current_scenario,
+        storyline=storyline,
+        cut_prompts=cut_prompts,
+        image_provider=providers["image_provider"],
+        video_provider=providers["video_provider"],
+        audio_provider=providers["audio_provider"],
     )
 
 
@@ -2496,8 +3203,278 @@ def find_cut_number(path: Path) -> int:
     return int(match.group(1)) if match else 0
 
 
+def format_cut_id(cut_number: int) -> str:
+    return f"cut_{int(cut_number):03d}"
+
+
+def parse_cut_id(cut_id: str | int | None) -> int:
+    if cut_id is None:
+        return 0
+    if isinstance(cut_id, int):
+        return int(cut_id)
+    text = str(cut_id).strip()
+    if not text:
+        return 0
+    match = re.search(r"(\d+)", text)
+    return int(match.group(1)) if match else 0
+
+
+MIN_VIDEO_PROMPT_LENGTH = 10
+
+
+def coerce_video_prompt_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("video_prompt", "motion_prompt", "prompt", "image_prompt"):
+            nested = value.get(key)
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+        return json.dumps(value, ensure_ascii=False)
+    return str(value).strip()
+
+
+def resolve_video_image_url(image_path: str) -> str:
+    return normalize_web_path(str(image_path or "").strip(), keep_query=True)
+
+
+def flush_server_log(*lines: str) -> None:
+    for line in lines:
+        print(line, flush=True)
+
+
+def log_generate_video_start(
+    *,
+    project_id: str,
+    storyboard_id: str,
+    cut_id: str,
+    cut_index: int | None,
+    provider: str,
+    image_path: str,
+    video_prompt: str,
+    local_image_url: str = "",
+    public_start_image_url: str = "",
+) -> None:
+    preview = video_prompt[:500]
+    provider_name = (provider or "").strip().lower()
+    if provider_name == "replicate":
+        flush_server_log(
+            "[generate-video-start]",
+            f"provider: Replicate",
+            f"cut_id: {cut_id}",
+            f"local_image_url: {local_image_url or image_path or '(none)'}",
+            f"public_start_image_url: {public_start_image_url or '(none)'}",
+            f"video_prompt_preview: {preview}",
+        )
+        return
+
+    image_url = resolve_video_image_url(image_path)
+    prompt_hash = compute_prompt_hash(video_prompt) if video_prompt else ""
+    flush_server_log(
+        "[generate-video-start]",
+        f"project_id: {project_id}",
+        f"storyboard_id: {storyboard_id or '(none)'}",
+        f"cut_id: {cut_id}",
+        f"cut_index: {cut_index}",
+        f"provider: {provider}",
+        f"image_path: {image_path or '(none)'}",
+        f"image_url: {image_url or '(none)'}",
+        f"video_prompt_length: {len(video_prompt)}",
+        f"video_prompt_preview: {preview}",
+        f"prompt_hash: {prompt_hash or '(empty)'}",
+    )
+
+
+def log_generate_video_success(
+    *,
+    cut_id: str,
+    video_path: str,
+    video_url: str,
+    duration: float | None,
+    file_size: int | None,
+) -> None:
+    flush_server_log(
+        "[generate-video-success]",
+        f"cut_id: {cut_id}",
+        f"video_path: {video_path}",
+        f"video_url: {video_url}",
+        f"duration: {duration}",
+        f"file_size: {file_size}",
+    )
+
+
+def log_generate_video_failed(
+    *,
+    cut_id: str,
+    provider: str,
+    error: Exception | str,
+    error_type: str = "",
+    replicate_detail: str = "",
+    exc: BaseException | None = None,
+) -> None:
+    message = str(error)
+    resolved_type = error_type or (error.__class__.__name__ if isinstance(error, Exception) else "Error")
+    flush_server_log(
+        "[generate-video-failed]",
+        f"cut_id: {cut_id}",
+        f"provider: {provider}",
+        f"error_type: {resolved_type}",
+        f"error_message: {message}",
+    )
+    if replicate_detail:
+        flush_server_log(f"replicate_response_detail: {replicate_detail}")
+    flush_server_log("traceback:")
+    if exc is not None:
+        traceback.print_exception(type(exc), exc, exc.__traceback__)
+    else:
+        traceback.print_exc()
+    sys.stdout.flush()
+
+
+def validate_cut_for_video_generation(
+    request: "GenerateVideoClipRequest",
+    *,
+    project_dir: Path,
+    storyboard_id: str,
+) -> str:
+    errors: list[str] = []
+    cut_id = format_cut_id(request.cut_number)
+
+    if request.cut_id is not None and parse_cut_id(request.cut_id) not in (0, request.cut_number):
+        errors.append(f"cut_id mismatch: expected {cut_id}, got {request.cut_id}")
+
+    if request.cut_index is None:
+        errors.append("cut_index is missing")
+
+    video_prompt = coerce_video_prompt_text(request.motion_prompt or request.image_prompt)
+    if request.motion_enabled:
+        if not video_prompt:
+            errors.append("video_prompt/motion_prompt is empty")
+        elif len(video_prompt) < MIN_VIDEO_PROMPT_LENGTH:
+            errors.append(
+                f"video_prompt is too short ({len(video_prompt)} chars). Regenerate Cut Prompts."
+            )
+
+    image_path = str(request.image_path or "").strip()
+    if not image_path:
+        errors.append("image_path/image_url is missing. Generate storyboard image first.")
+    else:
+        local_image = resolve_local_image_path(image_path)
+        if local_image is not None:
+            if not local_image.exists():
+                errors.append(f"image file not found: {local_image}")
+            elif local_image.stat().st_size <= 0:
+                errors.append(f"image file is empty: {local_image}")
+        elif image_path.startswith(("http://", "https://")):
+            from urllib.parse import urlparse
+
+            hostname = (urlparse(image_path).hostname or "").lower()
+            if hostname in {"127.0.0.1", "localhost", "0.0.0.0"}:
+                errors.append(
+                    "start image URL uses localhost. Replicate cannot fetch it. Set PUBLIC_BASE_URL or regenerate images."
+                )
+
+    if not request.selected_project.strip():
+        errors.append("project_id/selected_project is missing")
+    elif project_dir.name != request.selected_project.strip():
+        errors.append(
+            f"project_id mismatch: request={request.selected_project.strip()} resolved={project_dir.name}"
+        )
+
+    if not storyboard_id:
+        errors.append("storyboard_id is missing. Generate Storyboard first.")
+
+    provider_name = str(getattr(request, "provider", "") or "").strip().lower()
+    if provider_name == "replicate" and image_path:
+        if not get_public_base_url():
+            errors.append(REPLICATE_NGROK_REQUIRED_MESSAGE)
+        else:
+            try:
+                resolve_replicate_start_image_urls(image_path)
+            except RuntimeError as error:
+                errors.append(str(error))
+            except Exception:
+                errors.append(REPLICATE_NGROK_REQUIRED_MESSAGE)
+
+    if errors:
+        return "; ".join(errors)
+    return ""
+
+
+def dedupe_preserve_order(cuts: list[int]) -> list[int]:
+    seen: set[int] = set()
+    ordered: list[int] = []
+    for cut in cuts:
+        try:
+            cut_number = int(cut)
+        except (TypeError, ValueError):
+            continue
+        if cut_number <= 0 or cut_number in seen:
+            continue
+        seen.add(cut_number)
+        ordered.append(cut_number)
+    return ordered
+
+
+def normalize_prompt_fragment(text: object) -> str:
+    return re.sub(r"\s+", " ", str(text or "").strip().lower())[:160]
+
+
+def clip_metadata_matches_project(
+    metadata: dict | None,
+    project_slug: str,
+    storyboard_id: str = "",
+) -> bool:
+    if not metadata:
+        return True
+    meta_project = normalized_run_text(
+        metadata.get("project_id") or metadata.get("project") or metadata.get("selected_project")
+    )
+    if meta_project and meta_project != normalized_run_text(project_slug):
+        return False
+    meta_storyboard = normalized_run_text(metadata.get("storyboard_id"))
+    if storyboard_id and meta_storyboard and meta_storyboard != storyboard_id:
+        return False
+    return True
+
+
+def cut_video_selection_rank(
+    *,
+    video_path: Path,
+    metadata: dict,
+    collection: str,
+    project_slug: str,
+    storyboard_id: str,
+) -> tuple[int, int]:
+    rank = 0
+    if clip_metadata_matches_project(metadata, project_slug, storyboard_id):
+        rank += 100
+    elif metadata:
+        rank -= 100
+    if collection == "generated_cuts":
+        rank += 30
+    elif collection == "clips":
+        rank += 10
+    elif collection == "selected_cuts":
+        rank += 5
+    provider = str(metadata.get("provider") or "").lower()
+    if provider == "replicate":
+        rank += 8
+    elif provider == "mock" or "mock" in video_path.stem.lower():
+        rank -= 8
+    try:
+        mtime = int(video_path.stat().st_mtime)
+    except OSError:
+        mtime = 0
+    return rank, mtime
+
+
 def is_usable_mp4(path: Path) -> bool:
-    return path.is_file() and path.suffix.lower() == ".mp4" and path.stat().st_size > 1024
+    if not path.is_file() or path.suffix.lower() != ".mp4":
+        return False
+    return bool(validate_playable_mp4(path)["valid"])
 
 
 def scan_clip_job(job_dir: Path) -> dict:
@@ -2607,14 +3584,45 @@ def sync_latest_cut_video(
     if not is_usable_mp4(clip_path):
         return ""
 
+    sidecar = read_json_file(clip_path.with_suffix(".json")) or {}
+    validation = validate_playable_mp4(clip_path)
+    if not validation["valid"]:
+        return ""
+
     selected_project, selected_project_dir = resolve_project_dir(request.selected_project)
     selected_project_dirs = project_asset_dirs(selected_project_dir)
+    storyboard_id = current_storyboard_id(selected_project_dir)
+    cut_id = format_cut_id(request.cut_number)
+    created_at = sidecar.get("created_at") or datetime.now(timezone.utc).isoformat()
+    source_prompt = request.motion_prompt or request.image_prompt or ""
+    prompt_hash = sidecar.get("prompt_hash") or compute_prompt_hash(source_prompt)
+    file_size = int(sidecar.get("file_size") or validation.get("file_size_bytes") or 0)
+    duration_value = sidecar.get("duration")
+    if duration_value is None:
+        duration_value = validation.get("duration_seconds")
+    video_filename = sidecar.get("video_filename") or clip_path.name
+    version = int(datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()) if created_at else int(time.time())
+    public_video_url = sidecar.get("video_url") or cache_bust_video_url(clip_url, version=version)
+
     latest_path = LATEST_VIDEOS_DIR / f"cut_{request.cut_number}.mp4"
     shutil.copy2(clip_path, latest_path)
 
     metadata = {
         "kind": "cut",
+        "project_id": selected_project,
+        "project": selected_project,
+        "storyboard_id": storyboard_id,
+        "job_id": source_job_id,
+        "cut_id": cut_id,
         "cut_number": request.cut_number,
+        "cut_index": request.cut_index,
+        "cut_title": request.cut_type,
+        "cut_description": request.scene_context_prompt,
+        "source_prompt": source_prompt,
+        "image_prompt": request.image_prompt,
+        "video_prompt": request.motion_prompt,
+        "generated_video_path": str(clip_path),
+        "created_at": created_at,
         "cut_type": request.cut_type,
         "visual_style_lock": request.visual_style_lock,
         "action_state": request.action_state,
@@ -2623,56 +3631,64 @@ def sync_latest_cut_video(
         "allowed_subject_motion": request.allowed_subject_motion,
         "blocked_actions": request.blocked_actions,
         "provider": request.provider,
-        "duration": request.duration,
+        "duration": duration_value,
         "motion_grammar": request.motion_grammar,
         "active_character": request.active_character,
         "source_job_id": source_job_id,
         "source_clip_path": str(clip_path),
         "source_clip_url": clip_url,
-        "image_prompt": request.image_prompt,
         "character_lock_prompt": request.character_lock_prompt,
         "scene_context_prompt": request.scene_context_prompt,
         "continuity_constraints": request.continuity_constraints,
         "video_file": str(latest_path),
-        "video_url": latest_video_url_for_path(latest_path),
+        "video_path": str(clip_path),
+        "video_filename": video_filename,
+        "video_url": cache_bust_video_url(latest_video_url_for_path(latest_path), version=version),
+        "file_size": file_size,
+        "prompt_hash": prompt_hash,
         "message": message,
-        "project": selected_project,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": created_at,
     }
     write_json(LATEST_VIDEOS_DIR / f"cut_{request.cut_number}.json", metadata)
-    project_clip_path = selected_project_dirs["clips"] / f"cut_{request.cut_number}_{request.provider}.mp4"
+
+    project_clip_path = selected_project_dirs["clips"] / f"{cut_id}_{request.provider}.mp4"
+    legacy_clip_path = selected_project_dirs["clips"] / f"cut_{request.cut_number}_{request.provider}.mp4"
     shutil.copy2(clip_path, project_clip_path)
+    shutil.copy2(clip_path, legacy_clip_path)
     project_clip_metadata = {
         **metadata,
         "video_file": str(project_clip_path),
-        "video_url": project_url_for_path(project_clip_path),
-        "latest_video_url": metadata["video_url"],
+        "video_url": cache_bust_video_url(project_url_for_path(project_clip_path), version=version),
+        "latest_video_url": public_video_url,
     }
     write_json(project_clip_path.with_suffix(".json"), project_clip_metadata)
+    write_json(legacy_clip_path.with_suffix(".json"), project_clip_metadata)
     update_project_metadata(
         selected_project,
         selected_project_dir,
         clip={
             "cut_number": request.cut_number,
+            "cut_id": cut_id,
             "path": str(project_clip_path),
             "url": project_clip_metadata["video_url"],
             "provider": request.provider,
+            "storyboard_id": storyboard_id,
             "created_at": metadata["updated_at"],
         },
     )
-    project_cut_path = PROJECT_GENERATED_CUTS_DIR / f"cut_{request.cut_number}_{request.provider}.mp4"
+    project_cut_path = selected_project_dirs["generated_cuts"] / f"{cut_id}_{request.provider}.mp4"
     shutil.copy2(clip_path, project_cut_path)
     write_json(
         project_cut_path.with_suffix(".json"),
         {
-            **metadata,
+            **project_clip_metadata,
             "video_file": str(project_cut_path),
             "video_url": project_url_for_path(project_cut_path),
             "latest_video_url": metadata["video_url"],
         },
     )
     write_latest_videos_manifest()
-    return metadata["video_url"]
+    return public_video_url
 
 
 def sync_latest_from_generated_clips() -> None:
@@ -2720,7 +3736,6 @@ def sync_latest_from_generated_clips() -> None:
 
 
 def scan_latest_videos() -> list[dict]:
-    sync_latest_from_generated_clips()
     videos = []
     for video_path in sorted(LATEST_VIDEOS_DIR.glob("*.mp4")):
         if not is_usable_mp4(video_path):
@@ -2898,11 +3913,12 @@ def narration_from_description(description: str, cut_number: int, topic: str = "
         return "하루의 긴장이 풀린 뽀식이는 소파 위에서 천천히 잠에 빠져든다."
 
     narration_patterns = [
-        "이야기는 {text}에서 조용히 시작된다.",
-        "카메라는 {text} 장면을 따라가며 분위기를 조금씩 쌓아 올린다.",
-        "이 순간, {text}이 장면의 중심으로 선명하게 다가온다.",
-        "흐름은 {text}으로 이어지며 다음 감정을 준비한다.",
-        "마지막으로 {text}이 남기고 간 여운이 화면을 채운다.",
+        
+        "어? 오늘은 또 무슨 일이 있었지?",
+        "흠... 뭔가 수상한데?",
+        "잠깐만, 이건 예상 못 했어.",
+        "그래도 일단 지켜보자.",
+        "결국 또 이렇게 되는구나."
     ]
     return narration_patterns[(cut_number - 1) % len(narration_patterns)].format(text=text)
 
@@ -2934,10 +3950,16 @@ def build_project_script_from_storyline(
     narration = []
     items = []
     missing_text_cuts: list[int] = []
-    video_paths = collect_project_cut_video_paths(project_dir)
+    video_paths = collect_project_cut_video_paths(
+        project_dir,
+        project_slug=project_slug,
+        storyboard_id=current_storyboard_id(project_dir),
+    )
 
     for index, raw_entry in enumerate(cut_flow_raw):
-        if index < len(cut_numbers) and int(cut_numbers[index]) > 0:
+        if isinstance(raw_entry, dict) and int(raw_entry.get("cut") or 0) > 0:
+            cut_number = int(raw_entry["cut"])
+        elif cut_numbers and index < len(cut_numbers) and int(cut_numbers[index]) > 0:
             cut_number = int(cut_numbers[index])
         else:
             cut_number = index + 1
@@ -2945,8 +3967,8 @@ def build_project_script_from_storyline(
         narration_text = ""
         subtitle_text = ""
         if isinstance(raw_entry, dict):
-            narration_text = str(raw_entry.get("narration") or raw_entry.get("subtitle") or raw_entry.get("scene") or "").strip()
-            subtitle_text = str(raw_entry.get("subtitle") or narration_text).strip()
+            narration_text = str(raw_entry.get("narration") or raw_entry.get("subtitle") or "").strip()
+            subtitle_text = str(raw_entry.get("subtitle") or raw_entry.get("narration") or "").strip()
         else:
             narration_text = str(raw_entry).strip()
             subtitle_text = narration_text
@@ -3056,7 +4078,11 @@ def build_project_script(project_slug: str, project_dir: Path) -> dict:
     subtitles = []
     narration = []
     items = []
-    video_paths = collect_project_cut_video_paths(project_dir)
+    video_paths = collect_project_cut_video_paths(
+        project_dir,
+        project_slug=project_slug,
+        storyboard_id=current_storyboard_id(project_dir),
+    )
     topic = storyboard.get("topic") or metadata.get("topic") or metadata.get("last_topic") or ""
 
     for index, item in enumerate(script_items):
@@ -3070,6 +4096,7 @@ def build_project_script(project_slug: str, project_dir: Path) -> dict:
         items.append(
             {
                 "cut": cut_number,
+                "cut_id": format_cut_id(cut_number),
                 "text": narration[-1]["text"],
                 "subtitle": subtitles[-1]["text"],
                 "video_path": str(video_paths.get(cut_number) or ""),
@@ -3120,14 +4147,23 @@ def project_narration_cut_inputs_from_script(script: dict) -> list[ProjectVoiceC
     cut_order = script_export_cut_order(script)
     slot_durations = export_timing_durations(script, cut_order)
     narration_by_cut = _script_entries_by_cut(script.get("narration") or [])
+    missing_cuts = [
+        cut_number
+        for cut_number in cut_order
+        if cut_number not in narration_by_cut or not str(narration_by_cut[cut_number].get("text") or "").strip()
+    ]
+    if missing_cuts:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No narration text found for export timeline cuts: {missing_cuts}",
+        )
     return [
         ProjectVoiceCutInput(
             cut_number=cut_number,
-            narration=(narration_by_cut[cut_number].get("text") or "").strip(),
+            narration=str(narration_by_cut[cut_number].get("text") or "").strip(),
             duration=max(0.1, float(slot_durations.get(cut_number) or 3.0)),
         )
         for cut_number in cut_order
-        if cut_number in narration_by_cut and (narration_by_cut[cut_number].get("text") or "").strip()
     ]
 
 
@@ -3246,29 +4282,47 @@ def find_narration_cut_number(path: Path) -> int:
 
 def script_export_cut_order(script: dict) -> list[int]:
     selected = script.get("selected_cuts") or []
-    selected_numbers = sorted({int(cut) for cut in selected if int(cut) > 0})
+    selected_numbers = dedupe_preserve_order([int(cut) for cut in selected if int(cut) > 0])
     if selected_numbers:
         return selected_numbers
 
     timing_plan_cuts = script.get("timing_plan", {}).get("selected_cuts") or []
-    timing_numbers = sorted({int(cut) for cut in timing_plan_cuts if int(cut) > 0})
+    timing_numbers = dedupe_preserve_order([int(cut) for cut in timing_plan_cuts if int(cut) > 0])
     if timing_numbers:
         return timing_numbers
 
     narration = script.get("narration") or []
     if narration:
-        return [
-            int(item.get("cut") or 0)
-            for item in narration
-            if int(item.get("cut") or 0) > 0 and (item.get("text") or "").strip()
-        ]
+        return dedupe_preserve_order(
+            [
+                int(item.get("cut") or 0)
+                for item in narration
+                if int(item.get("cut") or 0) > 0 and (item.get("text") or "").strip()
+            ]
+        )
 
     subtitles = script.get("subtitles") or []
-    return [
-        int(item.get("cut") or 0)
-        for item in subtitles
-        if int(item.get("cut") or 0) > 0 and (item.get("text") or "").strip()
-    ]
+    return dedupe_preserve_order(
+        [
+            int(item.get("cut") or 0)
+            for item in subtitles
+            if int(item.get("cut") or 0) > 0 and (item.get("text") or "").strip()
+        ]
+    )
+
+
+def merge_selected_cuts_with_base_order(base_order: list[int], selected: list[int]) -> list[int]:
+    selected = dedupe_preserve_order([int(cut) for cut in selected if int(cut) > 0])
+    if not selected:
+        return dedupe_preserve_order([int(cut) for cut in base_order if int(cut) > 0])
+    if not base_order:
+        return selected
+    selected_set = set(selected)
+    ordered = [cut for cut in base_order if cut in selected_set]
+    for cut in selected:
+        if cut not in ordered:
+            ordered.append(cut)
+    return ordered
 
 
 def resolve_export_selected_cuts(
@@ -3277,19 +4331,18 @@ def resolve_export_selected_cuts(
     explicit_selected_cuts: list[int] | None = None,
 ) -> list[int]:
     if explicit_selected_cuts:
-        return sorted({int(cut) for cut in explicit_selected_cuts if int(cut) > 0})
+        return dedupe_preserve_order([int(cut) for cut in explicit_selected_cuts if int(cut) > 0])
 
     if project_dir is not None:
-        run_cuts = load_current_run(project_dir).get("selected_cuts") or []
-        run_numbers = sorted({int(cut) for cut in run_cuts if int(cut) > 0})
-        if run_numbers:
-            return run_numbers
-
-        project_slug = project_dir.name
-        motion_selection = load_project_motion_selection(project_slug, project_dir)
+        motion_selection = load_project_motion_selection(project_dir.name, project_dir)
         motion_cuts = selected_cuts_from_motion_selection(motion_selection)
         if motion_cuts:
             return motion_cuts
+
+        run_cuts = load_current_run(project_dir).get("selected_cuts") or []
+        run_numbers = dedupe_preserve_order([int(cut) for cut in run_cuts if int(cut) > 0])
+        if run_numbers:
+            return run_numbers
 
     return script_export_cut_order(script)
 
@@ -3326,6 +4379,399 @@ def filter_script_to_selected_cuts(script: dict, selected_cuts: list[int]) -> di
     return script
 
 
+def ensure_script_entries_for_selected_cuts(
+    script: dict,
+    selected_cuts: list[int],
+    *,
+    source_script: dict | None = None,
+    topic: str = "",
+) -> dict:
+    """선택 컷마다 narration/subtitle/description/item이 timeline에 포함되도록 보강."""
+    if not selected_cuts:
+        return script
+
+    storyline_sourced = str(script.get("source") or "").strip().lower() == "storyline"
+    source = source_script if source_script is not None else script
+    source_items = _script_entries_by_cut(source.get("items") or [])
+    source_narration = _script_entries_by_cut(source.get("narration") or [])
+    source_subtitles = _script_entries_by_cut(source.get("subtitles") or [])
+    source_descriptions = _script_entries_by_cut(source.get("descriptions") or [])
+
+    narration_by_cut = _script_entries_by_cut(script.get("narration") or [])
+    subtitles_by_cut = _script_entries_by_cut(script.get("subtitles") or [])
+    descriptions_by_cut = _script_entries_by_cut(script.get("descriptions") or [])
+    items_by_cut = _script_entries_by_cut(script.get("items") or [])
+
+    for cut_number in selected_cuts:
+        description_text = (
+            str((source_descriptions.get(cut_number) or {}).get("text") or "").strip()
+            or str((source_items.get(cut_number) or {}).get("subtitle") or "").strip()
+            or str((source_items.get(cut_number) or {}).get("text") or "").strip()
+            or str((source_narration.get(cut_number) or {}).get("text") or "").strip()
+            or str((source_subtitles.get(cut_number) or {}).get("text") or "").strip()
+        )
+
+        if cut_number not in narration_by_cut or not str(narration_by_cut[cut_number].get("text") or "").strip():
+            narration_text = str((source_narration.get(cut_number) or {}).get("text") or "").strip()
+            if not narration_text and not storyline_sourced:
+                narration_text = narration_from_description(description_text, cut_number, topic)
+            if narration_text.strip():
+                narration_by_cut[cut_number] = {"cut": cut_number, "text": narration_text.strip()}
+
+        if cut_number not in subtitles_by_cut or not str(subtitles_by_cut[cut_number].get("text") or "").strip():
+            subtitle_text = str((source_subtitles.get(cut_number) or {}).get("text") or "").strip()
+            if not subtitle_text:
+                subtitle_text = str((narration_by_cut.get(cut_number) or {}).get("text") or "").strip()
+            if not subtitle_text and not storyline_sourced:
+                subtitle_text = subtitle_from_description(description_text, cut_number)
+            if subtitle_text.strip():
+                subtitles_by_cut[cut_number] = {"cut": cut_number, "text": subtitle_text.strip()}
+
+        if cut_number not in descriptions_by_cut and description_text:
+            descriptions_by_cut[cut_number] = {"cut": cut_number, "text": description_text}
+
+        if cut_number not in items_by_cut:
+            source_item = source_items.get(cut_number) or {}
+            items_by_cut[cut_number] = {
+                "cut": cut_number,
+                "text": str((narration_by_cut.get(cut_number) or {}).get("text") or "").strip(),
+                "subtitle": str((subtitles_by_cut.get(cut_number) or {}).get("text") or "").strip(),
+                "video_path": str(source_item.get("video_path") or ""),
+                "audio_path": str(source_item.get("audio_path") or ""),
+                "duration": source_item.get("duration") or 0,
+            }
+        else:
+            item = items_by_cut[cut_number]
+            if not str(item.get("text") or "").strip() and cut_number in narration_by_cut:
+                item["text"] = narration_by_cut[cut_number]["text"]
+            if not str(item.get("subtitle") or "").strip() and cut_number in subtitles_by_cut:
+                item["subtitle"] = subtitles_by_cut[cut_number]["text"]
+
+    script["narration"] = [
+        narration_by_cut[cut_number] for cut_number in selected_cuts if cut_number in narration_by_cut
+    ]
+    script["subtitles"] = [
+        subtitles_by_cut[cut_number] for cut_number in selected_cuts if cut_number in subtitles_by_cut
+    ]
+    script["descriptions"] = [
+        descriptions_by_cut[cut_number] for cut_number in selected_cuts if cut_number in descriptions_by_cut
+    ]
+    script["items"] = [items_by_cut[cut_number] for cut_number in selected_cuts if cut_number in items_by_cut]
+    return script
+
+
+def project_timeline_asset_path(project_dir: Path, asset_path: Path | None) -> str:
+    if not asset_path or not asset_path.is_file():
+        return ""
+    try:
+        rel = asset_path.relative_to(project_dir).as_posix()
+    except ValueError:
+        rel = asset_path.name
+    return f"/projects/{project_dir.name}/{rel}"
+
+
+def prepare_script_for_timeline(
+    project_dir: Path,
+    script: dict | None = None,
+    *,
+    selected_cuts: list[int] | None = None,
+) -> tuple[dict, list[int]]:
+    """디스크에 쓰지 않고 timeline용 script/timing을 메모리에서 준비."""
+    if script is None:
+        script = read_json_file(project_dir / "script.json") or {}
+
+    resolved_cuts = resolve_export_selected_cuts(project_dir, script, selected_cuts)
+    if not resolved_cuts:
+        return script, []
+
+    source_script = copy.deepcopy(script)
+    working_script = filter_script_to_selected_cuts(copy.deepcopy(script), resolved_cuts)
+    metadata = load_project_metadata(project_dir.name, project_dir)
+    topic = str(metadata.get("topic") or metadata.get("last_topic") or "").strip()
+    working_script = ensure_script_entries_for_selected_cuts(
+        working_script,
+        resolved_cuts,
+        source_script=source_script,
+        topic=topic,
+    )
+
+    plan = build_export_timing_plan(working_script)
+    plan_by_cut = {int(item["cut"]): item for item in plan}
+    for item in working_script.get("items") or []:
+        cut_number = int(item.get("cut") or 0)
+        timing = plan_by_cut.get(cut_number)
+        if timing:
+            item["duration"] = timing["duration"]
+    for subtitle in working_script.get("subtitles") or []:
+        cut_number = int(subtitle.get("cut") or 0)
+        timing = plan_by_cut.get(cut_number)
+        if timing:
+            subtitle["start"] = timing["start"]
+            subtitle["end"] = timing["end"]
+
+    return working_script, resolved_cuts
+
+
+def build_hyperframe_timeline(
+    project_slug: str,
+    project_dir: Path,
+    script: dict,
+    *,
+    selected_cuts: list[int] | None = None,
+) -> list[dict]:
+    """HyperFrames 스타일 HTML timeline composition — mock/export의 단일 기준."""
+    working_script, cut_order = prepare_script_for_timeline(
+        project_dir,
+        script,
+        selected_cuts=selected_cuts,
+    )
+    if not cut_order:
+        return []
+
+    timing_plan = build_export_timing_plan(working_script)
+    timing_by_cut = {int(item["cut"]): item for item in timing_plan}
+    narration_by_cut = _script_entries_by_cut(working_script.get("narration") or [])
+    subtitles_by_cut = _script_entries_by_cut(working_script.get("subtitles") or [])
+    storyboard_id = current_storyboard_id(project_dir)
+    video_paths = collect_export_cut_video_paths(
+        project_dir,
+        cut_order,
+        project_slug=project_slug,
+        storyboard_id=storyboard_id,
+    )
+
+    timeline: list[dict] = []
+    for cut_number in cut_order:
+        timing = timing_by_cut.get(cut_number) or {}
+        cut_id = format_cut_id(cut_number)
+        image_path_obj = project_cut_image_path(project_dir, cut_number)
+        video_path_obj = video_paths.get(cut_number)
+        audio_path_obj = project_narration_mp3_path(project_dir, cut_number)
+        subtitle_text = str((subtitles_by_cut.get(cut_number) or {}).get("text") or "").strip()
+        narration_text = str((narration_by_cut.get(cut_number) or {}).get("text") or "").strip()
+
+        timeline.append(
+            {
+                "cut_id": cut_id,
+                "cut_number": cut_number,
+                "start": float(timing.get("start") or 0),
+                "duration": float(timing.get("duration") or 0),
+                "end": float(timing.get("end") or 0),
+                "image_path": project_timeline_asset_path(project_dir, image_path_obj),
+                "image_filename": image_path_obj.name if image_path_obj else "",
+                "video_path": project_timeline_asset_path(project_dir, video_path_obj),
+                "video_filename": video_path_obj.name if video_path_obj else "",
+                "audio_path": project_timeline_asset_path(project_dir, audio_path_obj),
+                "audio_filename": audio_path_obj.name if audio_path_obj else "",
+                "subtitle_text": subtitle_text,
+                "narration_text": narration_text,
+            }
+        )
+    return timeline
+
+
+def log_hyperframe_timeline(timeline: list[dict]) -> None:
+    print("[HYPERFRAME-TIMELINE]")
+    for index, item in enumerate(timeline, start=1):
+        image_label = item.get("image_filename") or "(missing)"
+        video_label = item.get("video_filename") or "(missing)"
+        audio_label = item.get("audio_filename") or "(missing)"
+        subtitle_preview = (item.get("subtitle_text") or "")[:40]
+        print(
+            f"  {index}. {item['cut_id']} image={image_label} video={video_label} "
+            f"audio={audio_label} subtitle={subtitle_preview!r} "
+            f"start={item['start']:.1f} end={item['end']:.1f}"
+        )
+
+
+def log_audio_timeline(timeline: list[dict]) -> None:
+    print("[AUDIO-TIMELINE]")
+    for index, item in enumerate(timeline, start=1):
+        audio_label = item.get("audio_path") or item.get("audio_filename") or "(missing)"
+        print(f"  {index}. {item['cut_id']} -> audio: {audio_label}")
+    print(f"audio inputs: {len(timeline)}")
+
+
+def log_subtitle_timeline(timeline: list[dict]) -> None:
+    print("[SUBTITLE-TIMELINE]")
+    for index, item in enumerate(timeline, start=1):
+        text_preview = (item.get("subtitle_text") or "")[:60]
+        print(
+            f"  {index}. {item['cut_id']} start={item['start']:.1f} end={item['end']:.1f} text={text_preview!r}"
+        )
+    last_end = timeline[-1]["end"] if timeline else 0
+    print(f"subtitle blocks: {len(timeline)}")
+    print(f"subtitle last end: {last_end:.2f}")
+
+
+def analyze_hyperframe_timeline(timeline: list[dict], selected_cuts: list[int]) -> dict:
+    selected_cut_ids = [format_cut_id(cut) for cut in selected_cuts]
+    timeline_by_cut = {int(item.get("cut_number") or 0): item for item in timeline}
+
+    missing_timeline_cut_ids = [
+        format_cut_id(cut_number)
+        for cut_number in selected_cuts
+        if cut_number not in timeline_by_cut
+    ]
+    missing_video_cut_ids: list[str] = []
+    missing_audio_cut_ids: list[str] = []
+    missing_subtitle_cut_ids: list[str] = []
+    missing_image_cut_ids: list[str] = []
+    missing_details: list[dict] = []
+
+    for cut_number in selected_cuts:
+        cut_id = format_cut_id(cut_number)
+        item = timeline_by_cut.get(cut_number)
+        if not item:
+            missing_details.append(
+                {"cut_id": cut_id, "cut_number": cut_number, "reason": "timeline item missing"}
+            )
+            continue
+        if not str(item.get("image_path") or "").strip():
+            missing_image_cut_ids.append(cut_id)
+            missing_details.append({"cut_id": cut_id, "cut_number": cut_number, "reason": "image_path missing"})
+        if not str(item.get("video_path") or "").strip():
+            missing_video_cut_ids.append(cut_id)
+            missing_details.append({"cut_id": cut_id, "cut_number": cut_number, "reason": "video_path missing"})
+        if not str(item.get("audio_path") or "").strip():
+            missing_audio_cut_ids.append(cut_id)
+            missing_details.append({"cut_id": cut_id, "cut_number": cut_number, "reason": "audio_path missing"})
+        if not str(item.get("subtitle_text") or "").strip():
+            missing_subtitle_cut_ids.append(cut_id)
+            missing_details.append({"cut_id": cut_id, "cut_number": cut_number, "reason": "subtitle_text missing"})
+
+    video_ready_count = sum(
+        1 for cut_number in selected_cuts if str((timeline_by_cut.get(cut_number) or {}).get("video_path") or "").strip()
+    )
+    audio_ready_count = sum(
+        1 for cut_number in selected_cuts if str((timeline_by_cut.get(cut_number) or {}).get("audio_path") or "").strip()
+    )
+    subtitle_ready_count = sum(
+        1
+        for cut_number in selected_cuts
+        if str((timeline_by_cut.get(cut_number) or {}).get("subtitle_text") or "").strip()
+    )
+
+    can_final_export = (
+        len(selected_cuts) > 0
+        and len(timeline) == len(selected_cuts)
+        and not missing_timeline_cut_ids
+        and not missing_video_cut_ids
+        and not missing_audio_cut_ids
+        and not missing_subtitle_cut_ids
+        and not missing_image_cut_ids
+    )
+
+    return {
+        "selected_cut_ids": selected_cut_ids,
+        "selected_cut_numbers": selected_cuts,
+        "timeline_items": timeline,
+        "timeline_item_count": len(timeline),
+        "expected_count": len(selected_cuts),
+        "missing_timeline_cut_ids": missing_timeline_cut_ids,
+        "missing_video_cut_ids": missing_video_cut_ids,
+        "missing_audio_cut_ids": missing_audio_cut_ids,
+        "missing_subtitle_cut_ids": missing_subtitle_cut_ids,
+        "missing_image_cut_ids": missing_image_cut_ids,
+        "missing_details": missing_details,
+        "video_ready_count": video_ready_count,
+        "audio_ready_count": audio_ready_count,
+        "subtitle_ready_count": subtitle_ready_count,
+        "can_final_export": can_final_export,
+    }
+
+
+def hyperframe_missing_reason_label(reason: str) -> str:
+    labels = {
+        "timeline item missing": "timeline item 없음",
+        "image_path missing": "image_path 없음",
+        "video_path missing": "video_path 없음",
+        "audio_path missing": "audio_path 없음",
+        "subtitle_text missing": "subtitle_text 없음",
+    }
+    return labels.get(reason, reason)
+
+
+def build_hyperframe_timeline_status(
+    project_slug: str,
+    project_dir: Path,
+    *,
+    selected_cuts: list[int] | None = None,
+) -> dict:
+    script = read_json_file(project_dir / "script.json") or {}
+    resolved_cuts = resolve_export_selected_cuts(project_dir, script, selected_cuts)
+    timeline = build_hyperframe_timeline(
+        project_slug,
+        project_dir,
+        script,
+        selected_cuts=selected_cuts or resolved_cuts,
+    )
+    status = analyze_hyperframe_timeline(timeline, resolved_cuts)
+    print(f"[HYPERFRAME-SELECTED-CUTS] selected_cut_ids={status['selected_cut_ids']}")
+    log_hyperframe_timeline(timeline)
+    if status["missing_details"]:
+        print("[HYPERFRAME-TIMELINE-MISSING]")
+        for detail in status["missing_details"]:
+            print(f"  {detail['cut_id']}: {detail['reason']}")
+    return status
+
+
+def validate_hyperframe_timeline_for_export(
+    timeline: list[dict],
+    selected_cuts: list[int],
+    *,
+    require_audio: bool = True,
+    require_video: bool = True,
+) -> None:
+    analysis = analyze_hyperframe_timeline(timeline, selected_cuts)
+    expected_count = analysis["expected_count"]
+    actual_count = analysis["timeline_item_count"]
+
+    if expected_count and actual_count != expected_count:
+        detail_lines = [
+            f"Cut {detail.get('cut_number')}: {hyperframe_missing_reason_label(detail.get('reason') or '')}"
+            for detail in analysis["missing_details"]
+        ]
+        if detail_lines:
+            raise HTTPException(status_code=400, detail="\n".join(detail_lines))
+        missing_labels = ", ".join(
+            f"Cut {parse_cut_id(cut_id)}"
+            for cut_id in analysis["missing_timeline_cut_ids"]
+        ) or "알 수 없음"
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"선택 컷 {expected_count}개 중 timeline item이 {actual_count}개만 생성되었습니다. "
+                f"{missing_labels}의 video/audio/subtitle 상태를 확인해주세요."
+            ),
+        )
+
+    blocking_details: list[dict] = []
+    for detail in analysis["missing_details"]:
+        reason = detail.get("reason") or ""
+        if reason == "timeline item missing":
+            blocking_details.append(detail)
+            continue
+        if reason == "subtitle_text missing":
+            blocking_details.append(detail)
+            continue
+        if require_video and reason == "video_path missing":
+            blocking_details.append(detail)
+            continue
+        if require_audio and reason == "audio_path missing":
+            blocking_details.append(detail)
+            continue
+        if reason == "image_path missing":
+            blocking_details.append(detail)
+
+    if blocking_details:
+        lines = [
+            f"Cut {detail.get('cut_number')}: {hyperframe_missing_reason_label(detail.get('reason') or '')}"
+            for detail in blocking_details
+        ]
+        raise HTTPException(status_code=400, detail="\n".join(lines))
+
+
 def reconcile_script_export_cuts(
     project_dir: Path,
     script: dict | None = None,
@@ -3339,8 +4785,17 @@ def reconcile_script_export_cuts(
     if not resolved_cuts:
         return script
 
+    source_script = copy.deepcopy(script)
     previous_plan_cuts = script.get("timing_plan", {}).get("selected_cuts") or []
     script = filter_script_to_selected_cuts(script, resolved_cuts)
+    metadata = load_project_metadata(project_dir.name, project_dir)
+    topic = str(metadata.get("topic") or metadata.get("last_topic") or "").strip()
+    script = ensure_script_entries_for_selected_cuts(
+        script,
+        resolved_cuts,
+        source_script=source_script,
+        topic=topic,
+    )
     if not selected_cuts_match(previous_plan_cuts, resolved_cuts):
         script.pop("timing_plan", None)
 
@@ -3584,15 +5039,227 @@ def collect_project_narration_tracks_for_script(project_dir: Path, script: dict)
     return tracks
 
 
-def generate_project_voice(project_slug: str, project_dir: Path, selected_cuts: list[int] | None = None) -> dict:
+def apply_audio_subtitle_text_map(script: dict, text_map: list[AudioSubtitleCutText] | list[dict] | None) -> dict:
+    if not text_map:
+        return script
+
+    by_cut: dict[int, dict] = {}
+    for raw_entry in text_map:
+        if isinstance(raw_entry, AudioSubtitleCutText):
+            entry = raw_entry.model_dump()
+        elif isinstance(raw_entry, dict):
+            entry = raw_entry
+        else:
+            continue
+        cut_number = int(entry.get("cut_number") or parse_cut_id(entry.get("cut_id")) or 0)
+        text = str(entry.get("text") or "").strip()
+        if cut_number > 0 and text:
+            by_cut[cut_number] = entry
+
+    if not by_cut:
+        return script
+
+    narration_by_cut = _script_entries_by_cut(script.get("narration") or [])
+    subtitles_by_cut = _script_entries_by_cut(script.get("subtitles") or [])
+    descriptions_by_cut = _script_entries_by_cut(script.get("descriptions") or [])
+    items_by_cut = _script_entries_by_cut(script.get("items") or [])
+    selected_cuts = script_export_cut_order(script) or sorted(by_cut)
+
+    for cut_number, entry in by_cut.items():
+        text = str(entry.get("text") or "").strip()
+        narration_by_cut[cut_number] = {"cut": cut_number, "text": text}
+        subtitles_by_cut[cut_number] = {"cut": cut_number, "text": text}
+        descriptions_by_cut[cut_number] = {"cut": cut_number, "text": text}
+        item = items_by_cut.get(cut_number) or {"cut": cut_number}
+        item["text"] = text
+        item["subtitle"] = text
+        items_by_cut[cut_number] = item
+
+    script["narration"] = [narration_by_cut[cut] for cut in selected_cuts if cut in narration_by_cut]
+    script["subtitles"] = [subtitles_by_cut[cut] for cut in selected_cuts if cut in subtitles_by_cut]
+    script["descriptions"] = [descriptions_by_cut[cut] for cut in selected_cuts if cut in descriptions_by_cut]
+    script["items"] = [items_by_cut[cut] for cut in selected_cuts if cut in items_by_cut]
+    script["source"] = script.get("source") or "storyline"
+    return script
+
+
+SHORT_DIALOGUE_LINES = [
+    "어? 오늘은 또 무슨 일이 있었지?",
+    "흠... 뭔가 수상한데?",
+    "잠깐만, 이건 예상 못 했어.",
+    "그래도 일단 지켜보자.",
+    "결국 또 이렇게 되는구나.",
+]
+
+
+def short_dialogue_line_for_index(index: int) -> str:
+    return SHORT_DIALOGUE_LINES[index % len(SHORT_DIALOGUE_LINES)]
+
+
+def write_short_dialogue_script_for_selected_cuts(
+    project_slug: str,
+    project_dir: Path,
+    selected_cuts: list[int] | None = None,
+) -> dict:
     script = reconcile_script_export_cuts(project_dir, selected_cuts=selected_cuts)
+    cut_order = script_export_cut_order(script)
+    if not cut_order:
+        raise HTTPException(status_code=400, detail="No selected cuts for short dialogue script.")
+
+    metadata = load_project_metadata(project_slug, project_dir)
+    duration = float(script.get("duration") or metadata.get("duration") or max(len(cut_order) * 3, 15))
+    per_cut = duration / len(cut_order) if cut_order else 0
+
+    descriptions: list[dict] = []
+    subtitles: list[dict] = []
+    narration: list[dict] = []
+    items: list[dict] = []
+    video_paths = collect_project_cut_video_paths(
+        project_dir,
+        project_slug=project_slug,
+        storyboard_id=current_storyboard_id(project_dir),
+    )
+
+    for index, cut_number in enumerate(cut_order):
+        text = short_dialogue_line_for_index(index)
+        start = round(index * per_cut, 2)
+        end = round(duration if index == len(cut_order) - 1 else (index + 1) * per_cut, 2)
+        descriptions.append({"cut": cut_number, "text": text})
+        subtitles.append({"cut": cut_number, "text": text, "start": start, "end": end})
+        narration.append({"cut": cut_number, "text": text})
+        items.append(
+            {
+                "cut": cut_number,
+                "text": text,
+                "subtitle": text,
+                "video_path": str(video_paths.get(cut_number) or ""),
+                "audio_path": "",
+                "duration": round(end - start, 2),
+            }
+        )
+
+    script = {
+        "project": project_slug,
+        "topic": metadata.get("topic") or metadata.get("last_topic") or "",
+        "duration": duration,
+        "storyline_summary": script.get("storyline_summary") or "",
+        "story_arc": script.get("story_arc") or "",
+        "selected_cuts": cut_order,
+        "items": items,
+        "descriptions": descriptions,
+        "subtitles": subtitles,
+        "narration": narration,
+        "source": "short_dialogue",
+    }
+    write_json(project_dir / "script.json", script)
+    sync_script_to_export_timing_plan(project_dir, script)
+    run = ensure_current_run(
+        project_dir,
+        cut_order,
+        target_duration=script.get("duration"),
+        reset_if_changed=False,
+    )
+    run["audio_done"] = []
+    run["subtitle_done"] = []
+    run["final_export_path"] = ""
+    run["final_export_url"] = ""
+    run["final_export_selected_cuts"] = []
+    write_current_run(project_dir, run)
+    print(f"[short-dialogue] script refreshed cuts={cut_order}")
+    for index, cut_number in enumerate(cut_order, start=1):
+        print(f"[short-dialogue] cut{cut_number}: {short_dialogue_line_for_index(index - 1)}")
+    return script
+
+
+def log_audio_subtitle_request(
+    project_slug: str,
+    project_dir: Path,
+    selected_cuts: list[int] | None,
+    *,
+    storyboard_id: str | None = None,
+) -> None:
+    selected_cut_ids = [format_cut_id(cut_number) for cut_number in (selected_cuts or [])]
+    print(
+        "[AUDIO-SUBTITLE-REQUEST]",
+        {
+            "project_id": project_slug,
+            "storyboard_id": storyboard_id or current_storyboard_id(project_dir),
+            "selected_cut_ids": selected_cut_ids,
+        },
+    )
+
+
+def log_audio_subtitle_text_map(script: dict, selected_cuts: list[int] | None = None) -> None:
+    narration_by_cut = _script_entries_by_cut(script.get("narration") or [])
+    cut_order = selected_cuts or script_export_cut_order(script)
+    lines: list[str] = []
+    payload: dict[str, dict] = {}
+    for index, cut_number in enumerate(cut_order, start=1):
+        cut_id = format_cut_id(cut_number)
+        text = str((narration_by_cut.get(cut_number) or {}).get("text") or "").strip()
+        source = str(script.get("source") or "storyline")
+        payload[cut_id] = {"source": source, "text": text}
+        lines.append(f"{index}. {cut_id} source={source} text={text}")
+    print("[AUDIO-SUBTITLE-TEXT-MAP]")
+    for line in lines:
+        print(line)
+    if not lines:
+        print("(empty)")
+
+
+def generate_project_voice(
+    project_slug: str,
+    project_dir: Path,
+    selected_cuts: list[int] | None = None,
+    *,
+    text_map: list[AudioSubtitleCutText] | None = None,
+    storyboard_id: str | None = None,
+) -> dict:
+    log_audio_subtitle_request(
+        project_slug,
+        project_dir,
+        selected_cuts,
+        storyboard_id=storyboard_id,
+    )
+    script = reconcile_script_export_cuts(project_dir, selected_cuts=selected_cuts)
+    if text_map:
+        script = apply_audio_subtitle_text_map(script, text_map)
+        write_json(project_dir / "script.json", script)
+    log_audio_subtitle_text_map(script, selected_cuts)
     log_export_timing_plan(script)
+    timeline = build_hyperframe_timeline(
+        project_slug,
+        project_dir,
+        script,
+        selected_cuts=selected_cuts,
+    )
+    log_hyperframe_timeline(timeline)
+    validate_hyperframe_timeline_for_export(
+        timeline,
+        script_export_cut_order(script),
+        require_audio=False,
+        require_video=False,
+    )
     cut_inputs = project_narration_cut_inputs_from_script(script)
+    if len(cut_inputs) != len(timeline):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Audio timeline mismatch: expected {len(timeline)} narration tracks, "
+                f"got {len(cut_inputs)} inputs."
+            ),
+        )
     if not cut_inputs:
         raise HTTPException(status_code=400, detail="No narration text found in script.json.")
 
     project_dirs = project_asset_dirs(project_dir)
-    voice_generator = ProjectVoiceGenerator(project_dirs["audio"], public_url_builder=project_url_for_path)
+    metadata = load_project_metadata(project_slug, project_dir)
+    audio_provider = (metadata.get("audio_provider") or "openai").strip().lower()
+    voice_generator = ProjectVoiceGenerator(
+        project_dirs["audio"],
+        public_url_builder=project_url_for_path,
+        preferred_provider=audio_provider,
+    )
     results = []
     for cut_input in cut_inputs:
         print(f"[voice] start cut {cut_input.cut_number}")
@@ -3604,6 +5271,14 @@ def generate_project_voice(project_slug: str, project_dir: Path, selected_cuts: 
                 detail=f"CUT {cut_input.cut_number} voice generation failed: {error}",
             ) from error
         results.append(result)
+        print(
+            "[AUDIO-GENERATED]",
+            {
+                "cut_id": format_cut_id(cut_input.cut_number),
+                "audio_path": result.mp3_path,
+                "text_used": cut_input.narration,
+            },
+        )
         print(f"[voice] done cut {cut_input.cut_number}")
     manifest = build_project_voice_manifest(project_slug, results)
     write_json(project_dirs["audio"] / "manifest.json", manifest)
@@ -3612,6 +5287,15 @@ def generate_project_voice(project_slug: str, project_dir: Path, selected_cuts: 
     script = sync_script_to_export_timing_plan(project_dir)
     log_export_timing_plan(script)
     build_project_synced_narration_track(project_dir, script)
+    resolved_cuts = script_export_cut_order(script)
+    audio_timeline = build_hyperframe_timeline(
+        project_slug,
+        project_dir,
+        script,
+        selected_cuts=resolved_cuts,
+    )
+    log_audio_timeline(audio_timeline)
+    print(f"[final] audio inputs: {len(results)}")
     selected_cuts = script_export_cut_order(script)
     if script_timing_sync_valid(project_dir, script):
         update_current_run_done(project_dir, selected_cuts, "audio_done", [result.cut_number for result in results])
@@ -3670,6 +5354,7 @@ def generate_project_voice(project_slug: str, project_dir: Path, selected_cuts: 
         "audio": scan_project_audio_library(project_dir),
         "bgm": metadata["bgm"],
         "message": voice_message,
+        "hyperframe_timeline": audio_timeline,
     }
 
 
@@ -3686,7 +5371,32 @@ def load_project_script_for_subtitles(project_dir: Path) -> dict:
 def project_subtitle_cues_from_script(
     script: dict,
     project_dir: Path | None = None,
+    *,
+    selected_cut_numbers: list[int] | None = None,
 ) -> list[ProjectSubtitleCueInput]:
+    if project_dir is not None:
+        project_slug = project_dir.name
+        resolved_selected_cuts = selected_cut_numbers
+        if resolved_selected_cuts is None:
+            resolved_selected_cuts = resolve_export_selected_cuts(project_dir, script)
+        timeline = build_hyperframe_timeline(
+            project_slug,
+            project_dir,
+            script,
+            selected_cuts=resolved_selected_cuts,
+        )
+        if timeline:
+            return [
+                ProjectSubtitleCueInput(
+                    cut_number=int(item["cut_number"]),
+                    text=str(item["subtitle_text"] or "").strip(),
+                    start=float(item["start"]),
+                    end=float(item["end"]),
+                )
+                for item in timeline
+                if str(item.get("subtitle_text") or "").strip()
+            ]
+
     subtitle_items = script.get("subtitles") or []
     subtitles_by_cut = {
         int(item.get("cut") or 0): item
@@ -3741,7 +5451,24 @@ def refresh_project_subtitle_from_timeline(
 ) -> Path:
     script = reconcile_script_export_cuts(project_dir, script, selected_cuts=selected_cuts)
     log_export_timing_plan(script)
-    cues = project_subtitle_cues_from_script(script, project_dir)
+    timeline = build_hyperframe_timeline(
+        project_slug,
+        project_dir,
+        script,
+        selected_cuts=selected_cuts,
+    )
+    log_hyperframe_timeline(timeline)
+    validate_hyperframe_timeline_for_export(
+        timeline,
+        script_export_cut_order(script),
+        require_audio=False,
+        require_video=False,
+    )
+    cues = project_subtitle_cues_from_script(
+        script,
+        project_dir,
+        selected_cut_numbers=selected_cuts or script_export_cut_order(script),
+    )
     if not cues:
         raise HTTPException(status_code=400, detail="No subtitle text found for export timeline.")
     expected_cuts = script_export_cut_order(script)
@@ -3770,6 +5497,7 @@ def refresh_project_subtitle_from_timeline(
 
     total_seconds = cues[-1].end if cues else 0
     subtitle_last_end = parse_srt_last_end_seconds(project_dirs["subtitles"] / "subtitle.srt")
+    log_subtitle_timeline(timeline)
     print(f"[sync] subtitle last end: {subtitle_last_end:.2f}")
     print(
         f"[subtitle] regenerated export timeline project={project_slug} "
@@ -3827,12 +5555,57 @@ def collect_project_subtitle_file(project_dir: Path) -> Path | None:
     return srt_path if srt_path.exists() else None
 
 
-def generate_project_subtitle(project_slug: str, project_dir: Path, selected_cuts: list[int] | None = None) -> dict:
+def generate_project_subtitle(
+    project_slug: str,
+    project_dir: Path,
+    selected_cuts: list[int] | None = None,
+    *,
+    text_map: list[AudioSubtitleCutText] | None = None,
+    storyboard_id: str | None = None,
+) -> dict:
+    log_audio_subtitle_request(
+        project_slug,
+        project_dir,
+        selected_cuts,
+        storyboard_id=storyboard_id,
+    )
     script = reconcile_script_export_cuts(project_dir, selected_cuts=selected_cuts)
+    if text_map:
+        script = apply_audio_subtitle_text_map(script, text_map)
+        write_json(project_dir / "script.json", script)
+    log_audio_subtitle_text_map(script, selected_cuts)
     log_export_timing_plan(script)
-    cues = project_subtitle_cues_from_script(script, project_dir)
+    timeline = build_hyperframe_timeline(
+        project_slug,
+        project_dir,
+        script,
+        selected_cuts=selected_cuts,
+    )
+    log_hyperframe_timeline(timeline)
+    validate_hyperframe_timeline_for_export(
+        timeline,
+        script_export_cut_order(script),
+        require_audio=False,
+        require_video=False,
+    )
+    cues = project_subtitle_cues_from_script(
+        script,
+        project_dir,
+        selected_cut_numbers=selected_cuts or script_export_cut_order(script),
+    )
     if not cues:
         raise HTTPException(status_code=400, detail="No subtitle text found in script.json.")
+
+    for cue in cues:
+        print(
+            "[SUBTITLE-GENERATED]",
+            {
+                "cut_id": format_cut_id(cue.cut_number),
+                "start": cue.start,
+                "end": cue.end,
+                "text_used": cue.text,
+            },
+        )
 
     project_dirs = project_asset_dirs(project_dir)
     subtitle_generator = ProjectSubtitleGenerator(
@@ -3849,6 +5622,7 @@ def generate_project_subtitle(project_slug: str, project_dir: Path, selected_cut
         [cue.cut_number for cue in cues],
     )
     subtitle_last_end = parse_srt_last_end_seconds(project_dirs["subtitles"] / "subtitle.srt")
+    log_subtitle_timeline(timeline)
     print(f"[sync] subtitle last end: {subtitle_last_end:.2f}")
     if not script_timing_sync_valid(project_dir, script):
         print("[sync] subtitle timing not yet aligned with export plan")
@@ -3868,6 +5642,7 @@ def generate_project_subtitle(project_slug: str, project_dir: Path, selected_cut
         "cue_count": result.cue_count,
         "subtitles": scan_project_subtitle_library(project_dir),
         "message": "Mock subtitle.srt was generated from script.json subtitles.",
+        "hyperframe_timeline": timeline,
     }
 
 
@@ -3875,23 +5650,423 @@ def project_full_video_path(project_dir: Path) -> Path:
     return project_dir / "final" / "full_video.mp4"
 
 
-PROJECT_CUT_VIDEO_DIRS = ("clips", "generated_cuts", "selected_cuts")
+PROJECT_CUT_VIDEO_DIRS = ("generated_cuts", "clips", "selected_cuts")
+EXPORT_CANONICAL_VIDEO_DIR = "generated_cuts"
 
 
-def collect_project_cut_video_paths(project_dir: Path) -> dict[int, Path]:
+def is_legacy_export_clip_basename(filename: str, cut_number: int) -> bool:
+    stem = Path(filename).stem.lower()
+    cut_id = format_cut_id(cut_number)
+    legacy_stems = {
+        f"cut_{cut_number}",
+        f"cut_{cut_number}_replicate",
+        f"cut_{cut_number}_mock",
+        f"{cut_id}_replicate",
+        f"{cut_id}_mock",
+    }
+    if stem in legacy_stems and not stem.startswith(cut_id + "_"):
+        return True
+    if re.fullmatch(rf"cut_0*{cut_number}_(replicate|mock)", stem) and stem != f"{cut_id}_replicate" and stem != f"{cut_id}_mock":
+        return True
+    return False
+
+
+def export_video_metadata_matches_cut(metadata: dict, cut_number: int, project_slug: str, storyboard_id: str) -> bool:
+    if not metadata:
+        return False
+    if not clip_metadata_matches_project(metadata, project_slug, storyboard_id):
+        return False
+    meta_cut_number = parse_cut_id(metadata.get("cut_id")) or int(metadata.get("cut_number") or 0)
+    if meta_cut_number and meta_cut_number != cut_number:
+        return False
+    return True
+
+
+def resolve_export_video_path_for_cut(
+    project_dir: Path,
+    cut_number: int,
+    *,
+    project_slug: str | None = None,
+    storyboard_id: str | None = None,
+) -> Path | None:
+    project_slug = project_slug or project_dir.name
+    storyboard_id = storyboard_id if storyboard_id is not None else current_storyboard_id(project_dir)
+    cut_id = format_cut_id(cut_number)
+    generated_dir = project_dir / EXPORT_CANONICAL_VIDEO_DIR
+    if not generated_dir.is_dir():
+        return None
+
+    matches: list[tuple[str, Path, dict]] = []
+    for video_path in sorted(generated_dir.glob(f"{cut_id}_*.mp4")):
+        if not video_path.is_file():
+            continue
+        metadata = read_json_file(video_path.with_suffix(".json")) or {}
+        if not export_video_metadata_matches_cut(metadata, cut_number, project_slug, storyboard_id):
+            continue
+        updated_at = str(metadata.get("updated_at") or metadata.get("created_at") or "")
+        matches.append((updated_at, video_path, metadata))
+
+    if not matches:
+        return None
+    matches.sort(key=lambda item: item[0], reverse=True)
+    return matches[0][1]
+
+
+def collect_export_cut_video_paths(
+    project_dir: Path,
+    cut_order: list[int],
+    *,
+    project_slug: str | None = None,
+    storyboard_id: str | None = None,
+) -> dict[int, Path]:
+    project_slug = project_slug or project_dir.name
+    storyboard_id = storyboard_id if storyboard_id is not None else current_storyboard_id(project_dir)
     cut_paths: dict[int, Path] = {}
+    for cut_number in cut_order:
+        video_path = resolve_export_video_path_for_cut(
+            project_dir,
+            cut_number,
+            project_slug=project_slug,
+            storyboard_id=storyboard_id,
+        )
+        if video_path is not None:
+            cut_paths[cut_number] = video_path
+    return cut_paths
+
+
+def project_cut_image_path(project_dir: Path, cut_number: int) -> Path | None:
+    image_path = project_dir / "images" / f"cut_{cut_number}.png"
+    if image_path.is_file() and image_path.stat().st_size > 0:
+        return image_path
+    return None
+
+
+def log_final_export_selected_cuts(
+    requested_cuts: list[int] | None,
+    resolved_cuts: list[int],
+) -> None:
+    print("[FINAL-EXPORT-SELECTED-CUTS]")
+    print(f"  selected_cut_ids: {[format_cut_id(cut) for cut in resolved_cuts]}")
+    print(f"  selected_cut_numbers: {resolved_cuts}")
+    if requested_cuts is not None:
+        requested = dedupe_preserve_order([int(cut) for cut in requested_cuts if int(cut) > 0])
+        if requested and requested != resolved_cuts:
+            print(f"  requested_cut_numbers: {requested}")
+
+
+def log_final_export_inputs(
+    cut_order: list[int],
+    video_paths: dict[int, Path],
+    *,
+    project_dir: Path | None = None,
+) -> list[dict]:
+    entries: list[dict] = []
+    print("[FINAL-EXPORT-INPUTS]")
+    for index, cut_number in enumerate(cut_order, start=1):
+        cut_id = format_cut_id(cut_number)
+        video_path = video_paths.get(cut_number)
+        path_text = str(video_path) if video_path else "(missing)"
+        image_path = project_cut_image_path(project_dir, cut_number) if project_dir else None
+        image_text = str(image_path) if image_path else ""
+        image_filename = image_path.name if image_path else ""
+        print(f"  {index}. {cut_id} -> path: {path_text}")
+        if image_filename:
+            print(f"      image: {image_filename}")
+        entries.append(
+            {
+                "index": index,
+                "cut_number": cut_number,
+                "cut_id": cut_id,
+                "video_path": path_text,
+                "filename": video_path.name if video_path else "",
+                "image_path": image_text,
+                "image_filename": image_filename,
+            }
+        )
+    return entries
+
+
+def assert_export_video_input_count(
+    selected_cut_order: list[int],
+    export_video_paths: dict[int, Path],
+) -> None:
+    if not selected_cut_order:
+        return
+    found_count = sum(1 for cut_number in selected_cut_order if cut_number in export_video_paths)
+    if found_count >= len(selected_cut_order):
+        return
+    missing_numbers = [cut_number for cut_number in selected_cut_order if cut_number not in export_video_paths]
+    missing_labels = ", ".join(f"Cut {cut_number}" for cut_number in missing_numbers)
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"선택 컷 {len(selected_cut_order)}개 중 {found_count}개만 export 입력으로 확인되었습니다. "
+            f"{missing_labels} 영상을 다시 생성해주세요."
+        ),
+    )
+
+
+def validate_export_video_path_entries(
+    project_slug: str,
+    project_dir: Path,
+    cut_order: list[int],
+    video_paths: dict[int, Path],
+) -> dict:
+    storyboard_id = current_storyboard_id(project_dir)
+    mismatches: list[str] = []
+    bindings: list[dict] = []
+    seen_resolved_paths: dict[str, int] = {}
+
+    for cut_number in cut_order:
+        cut_id = format_cut_id(cut_number)
+        binding = {
+            "cut_number": cut_number,
+            "cut_id": cut_id,
+            "video_path": "",
+            "video_filename": "",
+            "valid": False,
+        }
+        video_path = video_paths.get(cut_number)
+
+        if video_path is None:
+            mismatches.append(
+                f"Cut {cut_number} 영상 파일이 없습니다. Cut {cut_number}을 다시 Generate Video 해주세요."
+            )
+            bindings.append(binding)
+            continue
+
+        binding["video_path"] = str(video_path)
+        binding["video_filename"] = video_path.name
+
+        if not video_path.exists():
+            mismatches.append(
+                f"Cut {cut_number} 영상 파일이 없습니다. Cut {cut_number}을 다시 Generate Video 해주세요."
+            )
+            bindings.append(binding)
+            continue
+
+        if is_legacy_export_clip_basename(video_path.name, cut_number) and EXPORT_CANONICAL_VIDEO_DIR not in video_path.parts:
+            mismatches.append(
+                f"Cut {cut_number} ({cut_id}): legacy clip 경로는 Final Export에 사용할 수 없습니다. "
+                f"Cut {cut_number}을 다시 Generate Video 해주세요."
+            )
+            bindings.append(binding)
+            continue
+
+        metadata = read_json_file(video_path.with_suffix(".json")) or {}
+        if not export_video_metadata_matches_cut(metadata, cut_number, project_slug, storyboard_id):
+            mismatches.append(
+                f"Cut {cut_number} ({cut_id}): storyboard에 연결된 최신 video_path가 아닙니다. "
+                f"Cut {cut_number}을 다시 Generate Video 해주세요."
+            )
+            bindings.append(binding)
+            continue
+
+        meta_cut_number = parse_cut_id(metadata.get("cut_id")) or int(metadata.get("cut_number") or 0)
+        if meta_cut_number and meta_cut_number != cut_number:
+            mismatches.append(
+                f"Cut {cut_number} ({cut_id}): 영상 metadata cut_id가 일치하지 않습니다 ({metadata.get('cut_id')})."
+            )
+            bindings.append(binding)
+            continue
+
+        file_size = int(metadata.get("file_size") or (video_path.stat().st_size if video_path.exists() else 0))
+        if file_size <= 0:
+            mismatches.append(
+                f"Cut {cut_number} 영상 파일 크기가 0입니다. Cut {cut_number}을 다시 Generate Video 해주세요."
+            )
+            bindings.append(binding)
+            continue
+
+        validation = validate_playable_mp4(video_path)
+        duration = float(
+            metadata.get("duration")
+            or validation.get("duration_seconds")
+            or 0
+        )
+        if duration <= 0:
+            mismatches.append(
+                f"Cut {cut_number} 영상 duration이 0입니다. Cut {cut_number}을 다시 Generate Video 해주세요."
+            )
+            bindings.append(binding)
+            continue
+
+        if not validation["valid"]:
+            detail = "; ".join(validation["errors"])
+            mismatches.append(
+                f"Cut {cut_number} 영상 파일이 정상 재생 가능한 mp4가 아닙니다. ({detail}) "
+                f"Cut {cut_number}을 다시 Generate Video 해주세요."
+            )
+            bindings.append(binding)
+            continue
+
+        try:
+            resolved_key = str(video_path.resolve())
+        except OSError:
+            resolved_key = str(video_path)
+        if resolved_key in seen_resolved_paths:
+            other_cut = seen_resolved_paths[resolved_key]
+            mismatches.append(
+                f"Cut {cut_number} ({cut_id}): Cut {other_cut}과 동일한 video_path({video_path.name})가 사용됩니다. "
+                f"Cut {cut_number}을 다시 Generate Video 해주세요."
+            )
+            bindings.append(binding)
+            continue
+        seen_resolved_paths[resolved_key] = cut_number
+
+        binding["valid"] = True
+        binding["file_size"] = file_size
+        binding["duration"] = duration
+        bindings.append(binding)
+
+    return {
+        "valid": not mismatches,
+        "mismatches": mismatches,
+        "bindings": bindings,
+        "cut_order": cut_order,
+    }
+
+
+def full_video_export_inputs_match(
+    full_video_path: Path,
+    expected_paths: dict[int, Path],
+    cut_order: list[int],
+) -> bool:
+    if not cut_order or not is_usable_mp4(full_video_path):
+        return False
+    metadata = read_json_file(full_video_path.with_suffix(".json")) or {}
+    timeline = metadata.get("timeline") or []
+    if not timeline:
+        return False
+    timeline_cut_numbers = [
+        int(item.get("cut_number") or 0)
+        for item in timeline
+        if int(item.get("cut_number") or 0) > 0
+    ]
+    if timeline_cut_numbers != cut_order:
+        return False
+    for item in timeline:
+        cut_number = int(item.get("cut_number") or 0)
+        expected = expected_paths.get(cut_number)
+        if not expected:
+            return False
+        source_file = item.get("source_file") or ""
+        if not source_file:
+            return False
+        try:
+            if Path(source_file).resolve() != expected.resolve():
+                return False
+        except OSError:
+            return False
+    return True
+
+
+def collect_project_cut_video_paths(
+    project_dir: Path,
+    *,
+    project_slug: str | None = None,
+    storyboard_id: str | None = None,
+) -> dict[int, Path]:
+    project_slug = project_slug or project_dir.name
+    storyboard_id = storyboard_id if storyboard_id is not None else current_storyboard_id(project_dir)
+    candidates: dict[int, list[tuple[int, int, Path]]] = {}
+
     for collection in PROJECT_CUT_VIDEO_DIRS:
         directory = project_dir / collection
         if not directory.is_dir():
             continue
-        for video_path in sorted(directory.glob("*.mp4")):
+        for video_path in directory.glob("*.mp4"):
             if not is_usable_mp4(video_path):
                 continue
             cut_number = find_cut_number(video_path)
             if cut_number <= 0:
                 continue
-            cut_paths.setdefault(cut_number, video_path)
-    return dict(sorted(cut_paths.items()))
+            metadata = read_json_file(video_path.with_suffix(".json")) or {}
+            rank, mtime = cut_video_selection_rank(
+                video_path=video_path,
+                metadata=metadata,
+                collection=collection,
+                project_slug=project_slug,
+                storyboard_id=storyboard_id,
+            )
+            candidates.setdefault(cut_number, []).append((rank, mtime, video_path))
+
+    cut_paths: dict[int, Path] = {}
+    for cut_number, entries in candidates.items():
+        entries.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        cut_paths[cut_number] = entries[0][2]
+    return cut_paths
+
+
+def validate_export_cut_bindings(
+    project_slug: str,
+    project_dir: Path,
+    script: dict,
+    cut_order: list[int] | None = None,
+) -> dict:
+    cut_order = cut_order or script_export_cut_order(script)
+    storyboard_id = current_storyboard_id(project_dir)
+    video_paths = collect_export_cut_video_paths(
+        project_dir,
+        cut_order,
+        project_slug=project_slug,
+        storyboard_id=storyboard_id,
+    )
+    path_check = validate_export_video_path_entries(project_slug, project_dir, cut_order, video_paths)
+    mismatches = list(path_check["mismatches"])
+    bindings = list(path_check["bindings"])
+
+    descriptions_by_cut = _script_entries_by_cut(script.get("descriptions") or [])
+    storyboard = load_project_storyboard(project_dir)
+    storyboard_by_cut = {
+        int(item.get("cut") or 0): item
+        for item in storyboard.get("cuts", [])
+        if isinstance(item, dict) and int(item.get("cut") or 0) > 0
+    }
+
+    for binding in bindings:
+        if not binding.get("valid"):
+            continue
+        cut_number = int(binding["cut_number"])
+        video_path = video_paths.get(cut_number)
+        if not video_path:
+            continue
+        metadata = read_json_file(video_path.with_suffix(".json")) or {}
+        expected_motion = (storyboard_by_cut.get(cut_number) or {}).get("motion_prompt") or ""
+        expected_desc = (descriptions_by_cut.get(cut_number) or {}).get("text") or ""
+        expected_prompt = expected_motion or expected_desc
+        source_prompt = (
+            metadata.get("source_prompt")
+            or metadata.get("video_prompt")
+            or metadata.get("motion_prompt")
+            or ""
+        )
+        expected_hash = compute_prompt_hash(expected_prompt)
+        meta_hash = metadata.get("prompt_hash") or compute_prompt_hash(source_prompt)
+        if expected_hash and meta_hash and expected_hash != meta_hash:
+            binding["valid"] = False
+            mismatches.append(
+                f"Cut {cut_number} 영상이 현재 Storyboard의 Cut {cut_number} 프롬프트와 일치하지 않습니다 "
+                f"(prompt_hash {meta_hash} != {expected_hash}). 다시 Generate Video 해주세요."
+            )
+            continue
+        if source_prompt and expected_prompt:
+            expected_norm = normalize_prompt_fragment(expected_prompt)
+            source_norm = normalize_prompt_fragment(source_prompt)
+            if expected_norm and source_norm and expected_norm not in source_norm and source_norm not in expected_norm:
+                binding["valid"] = False
+                mismatches.append(
+                    f"Cut {cut_number} 영상이 현재 Storyboard의 Cut {cut_number} 프롬프트와 일치하지 않습니다. "
+                    "다시 Generate Video 해주세요."
+                )
+
+    return {
+        "valid": not mismatches,
+        "mismatches": mismatches,
+        "bindings": bindings,
+        "cut_order": cut_order,
+        "video_paths": {cut: str(path) for cut, path in video_paths.items()},
+    }
 
 
 def write_project_full_video_metadata(
@@ -3951,7 +6126,7 @@ def project_full_video_matches_cut_order(
         return False
     if expected_duration:
         actual_duration = float(metadata.get("duration") or probe_video_metadata(target_path).get("duration_seconds") or 0)
-        return abs(actual_duration - float(expected_duration)) <= 0.5
+        return abs(actual_duration - float(expected_duration)) <= EXPORT_DURATION_WARN_TOLERANCE
     return True
 
 
@@ -3973,16 +6148,33 @@ def export_video_cut_durations(script: dict, cut_numbers: list[int]) -> dict[int
 
 def stitch_export_full_video_normalized(project_slug: str, project_dir: Path, script: dict) -> dict:
     cut_numbers = script_export_cut_order(script)
+    binding_check = validate_export_cut_bindings(project_slug, project_dir, script, cut_numbers)
+    if not binding_check["valid"]:
+        detail = "\n".join(binding_check["mismatches"])
+        print(f"[export-order] validation failed:\n{detail}")
+        raise HTTPException(status_code=400, detail=detail)
+
     target_duration = float(script.get("duration") or 0)
     per_cut_duration = export_per_cut_duration(script, cut_numbers)
     print(f"[duration] target total: {target_duration:g}")
     print(f"[duration] selected cuts: {len(cut_numbers)}")
     print(f"[duration] per cut: {per_cut_duration:g}")
 
-    available_cut_paths = collect_project_cut_video_paths(project_dir)
+    available_cut_paths = collect_export_cut_video_paths(
+        project_dir,
+        cut_numbers,
+        project_slug=project_slug,
+        storyboard_id=current_storyboard_id(project_dir),
+    )
+    log_final_export_inputs(cut_numbers, available_cut_paths, project_dir=project_dir)
     missing_cuts = [cut_number for cut_number in cut_numbers if cut_number not in available_cut_paths]
     if missing_cuts:
         raise HTTPException(status_code=400, detail=f"Missing video files for selected cuts: {missing_cuts}")
+
+    print("[export-order]")
+    for index, cut_number in enumerate(cut_numbers, start=1):
+        video_path = available_cut_paths[cut_number]
+        print(f"  {index}. {format_cut_id(cut_number)} -> {video_path}")
 
     normalized_dir = project_dir / "exports" / "normalized_cuts"
     normalized_dir.mkdir(parents=True, exist_ok=True)
@@ -3999,6 +6191,7 @@ def stitch_export_full_video_normalized(project_slug: str, project_dir: Path, sc
         timeline_payload.append(
             {
                 "cut_number": cut_number,
+                "cut_id": format_cut_id(cut_number),
                 "selected": True,
                 "transition_type": "cut",
                 "transition_duration": 0.0,
@@ -4010,7 +6203,7 @@ def stitch_export_full_video_normalized(project_slug: str, project_dir: Path, sc
 
     target_path = project_full_video_path(project_dir)
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    stitch_normalized_export_videos(normalized_paths, target_path, log_path)
+    stitch_normalized_export_videos(normalized_paths, target_path, log_path, target_duration=target_duration)
 
     probed = probe_video_metadata(target_path)
     actual_duration = float(probed.get("duration_seconds") or 0)
@@ -4055,7 +6248,12 @@ def script_duration_for_cut(script: dict, cut_number: int, fallback: float = 3.0
 
 
 def project_timeline_cuts_for_script(project_dir: Path, script: dict, cut_numbers: list[int]) -> list[DirectorTimelineCut]:
-    available_cut_paths = collect_project_cut_video_paths(project_dir)
+    available_cut_paths = collect_export_cut_video_paths(
+        project_dir,
+        cut_numbers,
+        project_slug=project_dir.name,
+        storyboard_id=current_storyboard_id(project_dir),
+    )
     missing_cuts = [cut_number for cut_number in cut_numbers if cut_number not in available_cut_paths]
     if missing_cuts:
         raise HTTPException(status_code=400, detail=f"Missing video files for selected cuts: {missing_cuts}")
@@ -4083,8 +6281,24 @@ def ensure_project_full_video(project_slug: str, project_dir: Path, script: dict
     target_path.parent.mkdir(parents=True, exist_ok=True)
     expected_cut_numbers = script_export_cut_order(script or {})
     expected_duration = float((script or {}).get("duration") or 0)
+    storyboard_id = current_storyboard_id(project_dir)
+    expected_export_paths = (
+        collect_export_cut_video_paths(
+            project_dir,
+            expected_cut_numbers,
+            project_slug=project_slug,
+            storyboard_id=storyboard_id,
+        )
+        if expected_cut_numbers
+        else {}
+    )
 
-    if project_full_video_matches_cut_order(target_path, expected_cut_numbers, expected_duration):
+    if (
+        expected_cut_numbers
+        and expected_export_paths
+        and project_full_video_matches_cut_order(target_path, expected_cut_numbers, expected_duration)
+        and full_video_export_inputs_match(target_path, expected_export_paths, expected_cut_numbers)
+    ):
         return {
             "built": False,
             "method": "existing",
@@ -4094,7 +6308,7 @@ def ensure_project_full_video(project_slug: str, project_dir: Path, script: dict
 
     metadata = load_project_metadata(project_slug, project_dir)
     final_video_ref = metadata.get("final_video")
-    if final_video_ref:
+    if final_video_ref and len(expected_cut_numbers) <= 1:
         candidate = Path(final_video_ref)
         if not candidate.is_absolute():
             candidate = PROJECT_ROOT / candidate
@@ -4121,7 +6335,9 @@ def ensure_project_full_video(project_slug: str, project_dir: Path, script: dict
             }
 
     alternate_full = project_dir / "full_video" / "full_video.mp4"
-    if project_full_video_matches_cut_order(alternate_full, expected_cut_numbers, expected_duration):
+    if len(expected_cut_numbers) <= 1 and project_full_video_matches_cut_order(
+        alternate_full, expected_cut_numbers, expected_duration
+    ):
         shutil.copy2(alternate_full, target_path)
         write_project_full_video_metadata(
             target_path,
@@ -4140,7 +6356,16 @@ def ensure_project_full_video(project_slug: str, project_dir: Path, script: dict
             "message": "Prepared final/full_video.mp4 from full_video/full_video.mp4.",
         }
 
-    cut_paths = collect_project_cut_video_paths(project_dir)
+    cut_paths = expected_export_paths or collect_export_cut_video_paths(
+        project_dir,
+        expected_cut_numbers,
+        project_slug=project_slug,
+        storyboard_id=storyboard_id,
+    ) if expected_cut_numbers else collect_project_cut_video_paths(
+        project_dir,
+        project_slug=project_slug,
+        storyboard_id=storyboard_id,
+    )
     if not cut_paths:
         return {
             "built": False,
@@ -4153,7 +6378,7 @@ def ensure_project_full_video(project_slug: str, project_dir: Path, script: dict
     if expected_cut_numbers and expected_duration:
         return stitch_export_full_video_normalized(project_slug, project_dir, script or {})
 
-    if len(cut_paths) == 1:
+    if len(cut_paths) == 1 and len(expected_cut_numbers) <= 1:
         source_path = next(iter(cut_paths.values()))
         shutil.copy2(source_path, target_path)
         write_project_full_video_metadata(
@@ -4274,110 +6499,436 @@ def collect_project_final_export_manifest(project_dir: Path) -> Path | None:
     return manifest_path if manifest_path.exists() else None
 
 
+def build_export_order_from_timeline(timeline: list[dict]) -> list[dict]:
+    return [
+        {
+            "index": index,
+            "cut_number": int(item.get("cut_number") or 0),
+            "cut_id": str(item.get("cut_id") or ""),
+            "video_path": str(item.get("video_path") or ""),
+            "filename": str(item.get("video_filename") or ""),
+            "image_path": str(item.get("image_path") or ""),
+            "image_filename": str(item.get("image_filename") or ""),
+            "audio_path": str(item.get("audio_path") or ""),
+            "audio_filename": str(item.get("audio_filename") or ""),
+            "subtitle_text": str(item.get("subtitle_text") or ""),
+            "start": float(item.get("start") or 0),
+            "end": float(item.get("end") or 0),
+            "duration": float(item.get("duration") or 0),
+        }
+        for index, item in enumerate(timeline, start=1)
+    ]
+
+
+class FinalExportValidationError(Exception):
+    def __init__(
+        self,
+        detail: str,
+        *,
+        final_timeline: list[dict],
+        missing_cut_ids: list[str] | None = None,
+    ):
+        self.detail = detail
+        self.final_timeline = final_timeline
+        self.missing_cut_ids = missing_cut_ids or []
+        super().__init__(detail)
+
+
+def timeline_url_to_project_path(project_dir: Path, url_path: str) -> Path | None:
+    if not url_path:
+        return None
+    prefix = f"/projects/{project_dir.name}/"
+    if url_path.startswith(prefix):
+        candidate = project_dir / url_path[len(prefix) :]
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
+def resolve_timeline_asset_file(
+    project_dir: Path,
+    url_path: str,
+    filename: str = "",
+    *,
+    subdirs: tuple[str, ...] = (),
+) -> Path | None:
+    resolved = timeline_url_to_project_path(project_dir, url_path)
+    if resolved:
+        return resolved
+    if filename:
+        search_dirs = subdirs or ("generated_cuts", "audio", "images", "final", "exports")
+        for subdir in search_dirs:
+            candidate = project_dir / subdir / filename
+            if candidate.is_file():
+                return candidate.resolve()
+    return None
+
+
+def enrich_final_export_timeline(project_dir: Path, timeline: list[dict]) -> list[dict]:
+    enriched: list[dict] = []
+    for item in timeline:
+        video_file = resolve_timeline_asset_file(
+            project_dir,
+            str(item.get("video_path") or ""),
+            str(item.get("video_filename") or ""),
+            subdirs=("generated_cuts", "final", "exports"),
+        )
+        audio_file = resolve_timeline_asset_file(
+            project_dir,
+            str(item.get("audio_path") or ""),
+            str(item.get("audio_filename") or ""),
+            subdirs=("audio",),
+        )
+        image_file = resolve_timeline_asset_file(
+            project_dir,
+            str(item.get("image_path") or ""),
+            str(item.get("image_filename") or ""),
+            subdirs=("images", "generated_cuts"),
+        )
+        enriched.append(
+            {
+                **item,
+                "video_file": video_file,
+                "audio_file": audio_file,
+                "image_file": image_file,
+            }
+        )
+    return enriched
+
+
+def serialize_final_timeline(timeline: list[dict]) -> list[dict]:
+    serialized: list[dict] = []
+    for item in timeline:
+        video_file = item.get("video_file")
+        audio_file = item.get("audio_file")
+        image_file = item.get("image_file")
+        serialized.append(
+            {
+                "cut_id": item.get("cut_id"),
+                "cut_number": item.get("cut_number"),
+                "start": float(item.get("start") or 0),
+                "duration": float(item.get("duration") or 0),
+                "end": float(item.get("end") or 0),
+                "video_path": str(item.get("video_path") or video_file or ""),
+                "audio_path": str(item.get("audio_path") or audio_file or ""),
+                "subtitle_text": str(item.get("subtitle_text") or ""),
+                "image_path": str(item.get("image_path") or image_file or ""),
+                "video_filename": str(item.get("video_filename") or ""),
+                "audio_filename": str(item.get("audio_filename") or ""),
+                "image_filename": str(item.get("image_filename") or ""),
+            }
+        )
+    return serialized
+
+
+def format_srt_timestamp(seconds: float) -> str:
+    total_ms = int(round(max(0.0, float(seconds)) * 1000))
+    hours, rem = divmod(total_ms, 3_600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, ms = divmod(rem, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+
+
+def write_final_timeline_subtitle_srt(timeline: list[dict], srt_path: Path) -> None:
+    blocks: list[str] = []
+    for index, item in enumerate(timeline, start=1):
+        text = str(item.get("subtitle_text") or "").strip()
+        if not text:
+            continue
+        start = float(item.get("start") or 0)
+        end = float(item.get("end") or start + 1)
+        blocks.append(
+            f"{index}\n{format_srt_timestamp(start)} --> {format_srt_timestamp(end)}\n{text}\n"
+        )
+    srt_path.parent.mkdir(parents=True, exist_ok=True)
+    srt_path.write_text("\n".join(blocks) + ("\n" if blocks else ""), encoding="utf-8")
+
+
+def log_final_export_timeline(final_timeline: list[dict]) -> None:
+    print("[FINAL-TIMELINE]")
+    for index, item in enumerate(final_timeline, start=1):
+        video_label = item.get("video_file") or item.get("video_path") or "(missing)"
+        audio_label = item.get("audio_file") or item.get("audio_path") or "(missing)"
+        subtitle_preview = (item.get("subtitle_text") or "")[:40]
+        print(
+            f"  {index}. {item['cut_id']} start={float(item['start']):.1f} end={float(item['end']):.1f} "
+            f"video={video_label} audio={audio_label} subtitle={subtitle_preview!r}"
+        )
+
+    print("[FFMPEG-VIDEO-INPUTS]")
+    for index, item in enumerate(final_timeline, start=1):
+        video_label = item.get("video_file") or item.get("video_path") or "(missing)"
+        print(f"  {index}. {item['cut_id']} -> {video_label}")
+
+    print("[FFMPEG-AUDIO-INPUTS]")
+    for index, item in enumerate(final_timeline, start=1):
+        audio_label = item.get("audio_file") or item.get("audio_path") or "(missing)"
+        print(f"  {index}. {item['cut_id']} -> {audio_label}")
+
+    print("[FFMPEG-SUBTITLE-BLOCKS]")
+    for index, item in enumerate(final_timeline, start=1):
+        text_preview = (item.get("subtitle_text") or "")[:40]
+        print(
+            f"  {index}. {float(item['start']):.1f} --> {float(item['end']):.1f} "
+            f"{item['cut_id']} text={text_preview!r}"
+        )
+
+    print(f"video inputs: {len(final_timeline)}")
+    print(f"audio inputs: {len(final_timeline)}")
+    print(f"subtitle blocks: {len(final_timeline)}")
+    last_end = float(final_timeline[-1]["end"]) if final_timeline else 0.0
+    print(f"subtitle last end: {last_end:.2f}")
+
+
+def validate_final_export_timeline_disk(final_timeline: list[dict], selected_cut_order: list[int]) -> None:
+    errors: list[str] = []
+    missing_cut_ids: list[str] = []
+
+    if len(final_timeline) != len(selected_cut_order):
+        present = {int(item.get("cut_number") or 0) for item in final_timeline}
+        missing_cut_ids = [format_cut_id(cut_number) for cut_number in selected_cut_order if cut_number not in present]
+        errors.append(
+            f"selected cuts: {len(selected_cut_order)}\n"
+            f"timeline items: {len(final_timeline)}\n"
+            f"missing: {', '.join(missing_cut_ids) if missing_cut_ids else 'unknown'}"
+        )
+
+    for item in final_timeline:
+        cut_number = int(item.get("cut_number") or 0)
+        video_file = item.get("video_file")
+        audio_file = item.get("audio_file")
+        subtitle_text = str(item.get("subtitle_text") or "").strip()
+
+        if not video_file or not Path(video_file).is_file():
+            errors.append(f"Cut {cut_number} video_path가 없습니다. Generate Video를 다시 실행해주세요.")
+        if not audio_file or not Path(audio_file).is_file():
+            errors.append(f"Cut {cut_number} audio_path가 없습니다. Audio를 다시 생성해주세요.")
+        if not subtitle_text:
+            errors.append(f"Cut {cut_number} subtitle_text가 없습니다. Subtitle을 다시 생성해주세요.")
+
+    if errors:
+        raise FinalExportValidationError(
+            "\n".join(errors),
+            final_timeline=serialize_final_timeline(final_timeline),
+            missing_cut_ids=missing_cut_ids,
+        )
+
+
+def raise_final_export_http_error(error: FinalExportValidationError) -> None:
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "success": False,
+            "error": error.detail,
+            "missing_cut_ids": error.missing_cut_ids,
+            "final_timeline": error.final_timeline,
+        },
+    )
+
+
 def generate_project_final_export(project_slug: str, project_dir: Path, selected_cuts: list[int] | None = None) -> dict:
     print(f"[final-export] assembling project={project_slug} dir={project_dir}")
     script = reconcile_script_export_cuts(project_dir, selected_cuts=selected_cuts)
-    log_export_timing_plan(script)
     selected_cut_order = script_export_cut_order(script)
+    log_final_export_selected_cuts(selected_cuts, selected_cut_order)
+    log_export_timing_plan(script)
+
+    final_timeline = build_hyperframe_timeline(
+        project_slug,
+        project_dir,
+        script,
+        selected_cuts=selected_cuts or selected_cut_order,
+    )
+    final_timeline = enrich_final_export_timeline(project_dir, final_timeline)
+
+    try:
+        validate_hyperframe_timeline_for_export(
+            final_timeline,
+            selected_cut_order,
+            require_audio=True,
+            require_video=True,
+        )
+        validate_final_export_timeline_disk(final_timeline, selected_cut_order)
+    except FinalExportValidationError as error:
+        print(f"[final-export] timeline validation failed:\n{error.detail}")
+        raise_final_export_http_error(error)
+    except HTTPException as error:
+        if isinstance(error.detail, str):
+            analysis = analyze_hyperframe_timeline(final_timeline, selected_cut_order)
+            raise HTTPException(
+                status_code=error.status_code,
+                detail={
+                    "success": False,
+                    "error": error.detail,
+                    "missing_cut_ids": analysis.get("missing_timeline_cut_ids")
+                    + analysis.get("missing_video_cut_ids")
+                    + analysis.get("missing_audio_cut_ids")
+                    + analysis.get("missing_subtitle_cut_ids"),
+                    "final_timeline": serialize_final_timeline(final_timeline),
+                },
+            ) from error
+        raise
+
+    binding_check = validate_export_cut_bindings(project_slug, project_dir, script, selected_cut_order)
+    if not binding_check["valid"]:
+        detail = "\n".join(binding_check["mismatches"])
+        print(f"[final-export] cut binding validation failed:\n{detail}")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": detail,
+                "missing_cut_ids": [],
+                "final_timeline": serialize_final_timeline(final_timeline),
+            },
+        )
+
+    log_final_export_timeline(final_timeline)
+
     target_duration = float(script.get("duration") or 0)
     per_cut_duration = target_duration / len(selected_cut_order) if selected_cut_order and target_duration else 0
     print(f"[post] selected cuts: {selected_cut_order}")
     print(f"[duration] target total: {target_duration:g}")
     print(f"[duration] selected cuts: {len(selected_cut_order)}")
     print(f"[duration] per cut: {per_cut_duration:g}")
-    full_video_prepare = ensure_project_full_video(project_slug, project_dir, script)
-    if full_video_prepare.get("built"):
-        print(
-            f"[final-export] prepared full video project={project_slug} "
-            f"method={full_video_prepare.get('method')} cuts={full_video_prepare.get('cut_count', 0)}"
-        )
-    refresh_project_subtitle_from_timeline(project_slug, project_dir, script)
-    build_project_synced_narration_track(project_dir, script)
-    validation = validate_project_export_assets(project_dir, script)
-    if not validation["ready"]:
-        missing = ", ".join(validation["missing"])
-        print(f"[final-export] assets missing project={project_slug} missing={missing}")
-        detail = f"Export assets missing: {missing}."
-        if "final/full_video.mp4" in validation["missing"]:
-            detail += " Generate Video or Export Full Video first."
-        else:
-            detail += " Generate Full Video, Voice, and Subtitle first."
-        raise HTTPException(status_code=400, detail=detail)
-
-    print(
-        f"[final-export] timeline cuts={script_export_cut_order(script)} "
-        f"audio_tracks={[path.name for path in validation['audio_tracks']]}"
-    )
-    print(f"[final] audio inputs: {len(validation['audio_tracks'])}")
 
     project_dirs = project_asset_dirs(project_dir)
     output_path = project_dirs["exports"] / "final_export.mp4"
+    temp_output_path = project_dirs["exports"] / "final_export.next.mp4"
+    subtitle_path = project_dirs["exports"] / "final_export_timeline.srt"
+    write_final_timeline_subtitle_srt(final_timeline, subtitle_path)
 
     bgm_track = project_dirs["audio"] / "bgm" / "bgm.mp3"
     usable_bgm_track = bgm_track if bgm_track.exists() and is_valid_media_file(bgm_track) else None
     if bgm_track.exists() and usable_bgm_track is None:
         print(f"[final-export] skipping invalid bgm project={project_slug} path={bgm_track}")
+
+    timeline_items = [
+        FinalTimelineExportItem(
+            cut_id=str(item["cut_id"]),
+            cut_number=int(item["cut_number"]),
+            start=float(item["start"] or 0),
+            end=float(item["end"] or 0),
+            duration=float(item["duration"] or 0),
+            video_file=Path(item["video_file"]),
+            audio_file=Path(item["audio_file"]),
+            subtitle_text=str(item.get("subtitle_text") or ""),
+        )
+        for item in final_timeline
+    ]
+
     try:
-        audio_durations = export_timing_durations(script, script_export_cut_order(script))
-        export_result = assemble_project_final_export(
-            ProjectFinalExportInput(
-                video_path=validation["video_path"],
-                audio_tracks=validation["audio_tracks"],
-                subtitle_path=validation["subtitle_path"],
-                output_path=output_path,
+        export_result = assemble_project_final_export_from_timeline(
+            FinalTimelineExportInput(
+                timeline=timeline_items,
+                output_path=temp_output_path,
+                subtitle_path=subtitle_path,
                 bgm_track=usable_bgm_track,
-                audio_durations=audio_durations,
+                target_duration=target_duration if target_duration > 0 else None,
             )
         )
     except FFmpegNotInstalledError as error:
+        temp_output_path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="ffmpeg not installed") from error
     except FFmpegRunError as error:
+        temp_output_path.unlink(missing_ok=True)
         detail = error.args[0] if error.args else "ffmpeg export failed."
         if error.log_path:
             detail = f"{detail}\n\nffmpeg log: {error.log_path}"
-        raise HTTPException(status_code=400, detail=detail) from error
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": detail,
+                "missing_cut_ids": [],
+                "final_timeline": serialize_final_timeline(final_timeline),
+            },
+        ) from error
     except RuntimeError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        temp_output_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": str(error),
+                "missing_cut_ids": [],
+                "final_timeline": serialize_final_timeline(final_timeline),
+            },
+        ) from error
 
-    if not output_path.exists() or output_path.stat().st_size < 1024:
-        raise HTTPException(status_code=400, detail="ffmpeg finished but final_export.mp4 was not created.")
+    if not temp_output_path.exists() or temp_output_path.stat().st_size < 1024:
+        temp_output_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": "ffmpeg finished but final_export.mp4 was not created.",
+                "missing_cut_ids": [],
+                "final_timeline": serialize_final_timeline(final_timeline),
+            },
+        )
+
+    temp_output_path.replace(output_path)
 
     actual_duration = float(export_result.duration_seconds or 0)
     print(f"[duration] final actual: {actual_duration:g}")
-    subtitle_last_end = parse_srt_last_end_seconds(validation["subtitle_path"])
+    subtitle_last_end = parse_srt_last_end_seconds(subtitle_path)
     print(f"[sync] subtitle last end: {subtitle_last_end:.2f}")
     narration_track = project_dir / "exports" / "narration_track.mp3"
     if narration_track.exists():
         final_audio_duration = float(probe_audio_metadata(narration_track).get("duration_seconds") or 0)
         print(f"[sync] narration total duration: {final_audio_duration:.2f}")
-    if target_duration and abs(actual_duration - target_duration) > 0.5:
-        print("[duration] mismatch detected")
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Final export duration mismatch: expected {target_duration:g}s, "
-                f"got {actual_duration:g}s. Check exports/ffmpeg_export.log and exports/ffmpeg_normalize.log."
-            ),
-        )
 
+    duration_status = "ok"
+    duration_warning = ""
+    export_log_path = project_dirs["exports"] / "ffmpeg_export.log"
+    if target_duration > 0:
+        duration_status, duration_diff = evaluate_export_duration_drift(target_duration, actual_duration)
+        if duration_status == "error":
+            print("[duration] mismatch detected")
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "success": False,
+                    "error": (
+                        f"Final export duration mismatch: expected {target_duration:g}s, "
+                        f"got {actual_duration:g}s (difference {duration_diff:.2f}s). "
+                        f"Check exports/ffmpeg_export.log and exports/ffmpeg_normalize.log."
+                    ),
+                    "missing_cut_ids": [],
+                    "final_timeline": serialize_final_timeline(final_timeline),
+                },
+            )
+        if duration_diff > 0.05:
+            duration_warning = (
+                f"Export completed. Duration adjusted: expected {target_duration:g}s, actual {actual_duration:g}s."
+            )
+            print(f"[duration] within tolerance warning: {duration_warning}")
+
+    serialized_timeline = serialize_final_timeline(final_timeline)
+    export_order = build_export_order_from_timeline(serialized_timeline)
     export_manifest = {
         "project": project_slug,
-        "video": "final/full_video.mp4",
-        "audio_count": validation["audio_count"],
-        "narration_track": "exports/narration_track.mp3",
-        "bgm": "audio/bgm/bgm.mp3" if usable_bgm_track else None,
-        "subtitle": "subtitles/subtitle.srt",
+        "mode": "final_timeline",
+        "audio_count": len(final_timeline),
+        "subtitle": "exports/final_export_timeline.srt",
         "status": "ready",
         "output": "exports/final_export.mp4",
         "target_duration": target_duration,
         "per_cut_duration": round(per_cut_duration, 3) if per_cut_duration else 0,
         "duration_seconds": export_result.duration_seconds,
         "duration": export_result.duration,
+        "duration_status": duration_status,
+        "duration_warning": duration_warning,
         "resolution": export_result.resolution,
         "file_size_bytes": export_result.file_size_bytes,
         "file_size": export_result.file_size,
         "export_logs": export_result.export_logs,
         "probe_summary": export_result.probe_summary,
+        "export_order": export_order,
+        "final_timeline": serialized_timeline,
+        "hyperframe_timeline": serialized_timeline,
+        "selected_cut_ids": [format_cut_id(cut) for cut in selected_cut_order],
     }
     export_manifest_path = project_dirs["exports"] / "final_export.json"
     write_json(export_manifest_path, export_manifest)
@@ -4387,13 +6938,13 @@ def generate_project_final_export(project_slug: str, project_dir: Path, selected
         target_duration=script.get("duration"),
         reset_if_changed=False,
     )
-    selected_cuts = list(run.get("selected_cuts") or script_export_cut_order(script))
-    run["video_done"] = selected_cuts
-    run["audio_done"] = selected_cuts
-    run["subtitle_done"] = selected_cuts
+    run_selected_cuts = list(run.get("selected_cuts") or script_export_cut_order(script))
+    run["video_done"] = run_selected_cuts
+    run["audio_done"] = run_selected_cuts
+    run["subtitle_done"] = run_selected_cuts
     run["final_export_path"] = str(output_path)
     run["final_export_url"] = project_url_for_path(output_path)
-    run["final_export_selected_cuts"] = selected_cuts
+    run["final_export_selected_cuts"] = run_selected_cuts
     run["target_duration"] = target_duration
     run["per_cut_duration"] = round(per_cut_duration, 3) if per_cut_duration else 0
     run["final_duration"] = export_result.duration_seconds or 0
@@ -4416,13 +6967,14 @@ def generate_project_final_export(project_slug: str, project_dir: Path, selected
         f"output={output_path} duration={export_result.duration} size={export_result.file_size}"
     )
     return {
+        "success": True,
         "project": project_slug,
-        "full_video_prepare": full_video_prepare,
         "exports_dir": str(project_dirs["exports"]),
         "manifest_file": str(export_manifest_path),
         "manifest_url": project_url_for_path(export_manifest_path),
         "output_file": str(output_path),
         "output_url": project_url_for_path(output_path),
+        "final_video_path": str(output_path),
         "ffmpeg_command": export_result.ffmpeg_command,
         "ffmpeg_log_file": export_result.ffmpeg_log_path,
         "ffmpeg_log_url": project_url_for_path(Path(export_result.ffmpeg_log_path))
@@ -4436,10 +6988,16 @@ def generate_project_final_export(project_slug: str, project_dir: Path, selected
         "probe_summary": export_result.probe_summary,
         "final_export": export_manifest,
         "exports": exports,
-        "duration": export_result.duration,
+        "duration": export_result.duration_seconds or export_result.duration,
+        "duration_warning": duration_warning,
+        "duration_status": duration_status,
         "resolution": export_result.resolution,
         "file_size": export_result.file_size,
-        "message": export_result.message,
+        "message": duration_warning or export_result.message,
+        "export_order": export_order,
+        "final_timeline": serialized_timeline,
+        "hyperframe_timeline": serialized_timeline,
+        "selected_cut_ids": [format_cut_id(cut) for cut in selected_cut_order],
     }
 
 
@@ -4504,7 +7062,11 @@ def build_latest_full_video_file(
 ) -> dict:
     project_slug, project_dir = resolve_project_dir(selected_project)
     project_dirs = project_asset_dirs(project_dir)
-    available_cut_paths = collect_project_cut_video_paths(project_dir)
+    available_cut_paths = collect_project_cut_video_paths(
+        project_dir,
+        project_slug=project_slug,
+        storyboard_id=current_storyboard_id(project_dir),
+    )
     if not available_cut_paths and project_slug == DEFAULT_PROJECT_SLUG:
         available_cut_paths = {
             find_cut_number(path): path
@@ -4695,10 +7257,44 @@ def get_projects():
 @app.post("/projects/create")
 def create_project(request: ProjectCreateRequest):
     project_slug, project_dir = create_project_dir(request.project)
+    update_project_metadata(
+        project_slug,
+        project_dir,
+        style="따뜻한 반려견 쇼츠",
+        duration=20,
+        cut_count=7,
+        image_provider="openai",
+        video_provider="replicate",
+        audio_provider="openai",
+    )
     return {
         "project": project_slug,
         "project_dir": str(project_dir),
         "projects": [project["slug"] for project in list_project_entries()],
+    }
+
+
+@app.post("/project-providers")
+def save_project_providers(request: UpdateProjectProvidersRequest):
+    project_slug, project_dir = resolve_project_dir(request.selected_project)
+    metadata = update_project_metadata(
+        project_slug,
+        project_dir,
+        style=request.style,
+        duration=request.duration,
+        cut_count=request.cut_count,
+        image_provider=request.image_provider,
+        video_provider=request.video_provider,
+        audio_provider=request.audio_provider,
+    )
+    return {
+        "project": project_slug,
+        "image_provider": metadata.get("image_provider"),
+        "video_provider": metadata.get("video_provider"),
+        "audio_provider": metadata.get("audio_provider"),
+        "style": metadata.get("style"),
+        "duration": metadata.get("duration"),
+        "cut_count": metadata.get("cut_count"),
     }
 
 
@@ -4773,18 +7369,30 @@ def generate_script(request: GenerateScriptRequest):
 @app.post("/generate-scenario-options", response_model=GenerateScenarioOptionsResponse)
 def generate_scenario_options(request: GenerateScenarioOptionsRequest):
     project_slug, project_dir = resolve_project_dir(request.selected_project)
-    response = build_scenario_options(request.topic, request.style, request.duration)
+    response = build_scenario_options(
+        request.topic,
+        request.style,
+        request.duration,
+        request.cut_count,
+    )
     write_json(
         project_dir / "scenario_options.json",
         {
             "topic": response.topic,
             "style": response.style,
             "duration": response.duration,
+            "cut_count": response.cut_count,
             "scenarios": [item.model_dump() for item in response.scenarios],
             "updated_at": datetime.now(timezone.utc).isoformat(),
         },
     )
-    update_project_metadata(project_slug, project_dir, topic=request.topic, duration=request.duration)
+    update_project_metadata(
+        project_slug,
+        project_dir,
+        topic=request.topic,
+        duration=request.duration,
+        cut_count=response.cut_count,
+    )
     return response
 
 
@@ -4808,8 +7416,13 @@ def select_scenario(request: SelectScenarioRequest):
 @app.post("/generate-storyline", response_model=GenerateStorylineResponse)
 def generate_storyline(request: GenerateStorylineRequest):
     if request.scenario:
-        return build_storyline_from_scenario(request.topic, request.scenario, request.style)
-    return build_mock_storyline(request.topic, request.style)
+        return build_storyline_from_scenario(
+            request.topic,
+            request.scenario,
+            request.style,
+            request.cut_count,
+        )
+    return build_mock_storyline(request.topic, request.style, request.cut_count)
 
 
 def normalize_cut_flow_items(cut_flow: list[Any]) -> list[str]:
@@ -4851,6 +7464,7 @@ def generate_cut_prompts(request: GenerateCutPromptsRequest):
         style=request.style,
         summary=request.summary,
         cut_flow=cut_flow,
+        cut_count=request.cut_count,
     )
     write_json(project_dir / "cut_prompts.json", response.model_dump())
     update_project_metadata(project_slug, project_dir, topic=request.topic)
@@ -4860,30 +7474,176 @@ def generate_cut_prompts(request: GenerateCutPromptsRequest):
 @app.post("/generate-voice")
 def generate_voice(request: GenerateVoiceRequest):
     project_slug, project_dir = resolve_project_dir(request.selected_project)
-    return generate_project_voice(project_slug, project_dir, selected_cuts=request.selected_cuts)
+    text_map = request.text_map
+    if request.force_short_dialogue:
+        write_short_dialogue_script_for_selected_cuts(
+            project_slug,
+            project_dir,
+            selected_cuts=request.selected_cuts,
+        )
+        text_map = None
+    elif request.audio_subtitle_only:
+        script = reconcile_script_export_cuts(project_dir, selected_cuts=request.selected_cuts)
+        run = ensure_current_run(
+            project_dir,
+            script_export_cut_order(script),
+            target_duration=script.get("duration"),
+            reset_if_changed=False,
+        )
+        run["final_export_path"] = ""
+        run["final_export_url"] = ""
+        run["final_export_selected_cuts"] = []
+        write_current_run(project_dir, run)
+    return generate_project_voice(
+        project_slug,
+        project_dir,
+        selected_cuts=request.selected_cuts,
+        text_map=text_map,
+        storyboard_id=request.storyboard_id,
+    )
 
 
 @app.post("/generate-subtitle")
 def generate_subtitle(request: GenerateSubtitleRequest):
     project_slug, project_dir = resolve_project_dir(request.selected_project)
-    return generate_project_subtitle(project_slug, project_dir, selected_cuts=request.selected_cuts)
+    text_map = request.text_map
+    if request.force_short_dialogue:
+        write_short_dialogue_script_for_selected_cuts(
+            project_slug,
+            project_dir,
+            selected_cuts=request.selected_cuts,
+        )
+        text_map = None
+    elif request.audio_subtitle_only:
+        script = reconcile_script_export_cuts(project_dir, selected_cuts=request.selected_cuts)
+        run = ensure_current_run(
+            project_dir,
+            script_export_cut_order(script),
+            target_duration=script.get("duration"),
+            reset_if_changed=False,
+        )
+        run["final_export_path"] = ""
+        run["final_export_url"] = ""
+        run["final_export_selected_cuts"] = []
+        write_current_run(project_dir, run)
+    return generate_project_subtitle(
+        project_slug,
+        project_dir,
+        selected_cuts=request.selected_cuts,
+        text_map=text_map,
+        storyboard_id=request.storyboard_id,
+    )
+
+
+FINAL_EXPORT_ALLOWED_SOURCES = frozenset({"manual_final_export", "generate_all"})
 
 
 @app.post("/final-export")
 def final_export(request: FinalExportRequest):
+    from agents.export_agent import ExportRunInput, run_final_export
+
     requested_project = request.selected_project
-    print(f"[final-export] START project={requested_project!r}")
+    export_source = str(request.source or "").strip()
+    if export_source not in FINAL_EXPORT_ALLOWED_SOURCES:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": (
+                    "Final export requires an allowed source. "
+                    "Use manual_final_export (Create Final Video) or generate_all (Generate All)."
+                ),
+                "source": export_source or None,
+            },
+        )
+    print(f"[final-export] START project={requested_project!r} source={export_source or 'unspecified'}")
     try:
         project_slug, project_dir = resolve_project_dir(request.selected_project)
-        result = generate_project_final_export(project_slug, project_dir, selected_cuts=request.selected_cuts)
-        print(f"[final-export] DONE project={project_slug} output={result.get('output_file')}")
-        return result
+        result = run_final_export(
+            ExportRunInput(
+                project_slug=project_slug,
+                project_dir=project_dir,
+                selected_cuts=request.selected_cuts,
+                source=export_source,
+            )
+        )
+        print(f"[final-export] DONE project={project_slug} output={result.export.get('output_file')}")
+        return result.export
     except HTTPException as error:
         print(f"[final-export] FAIL project={requested_project!r} status={error.status_code} detail={error.detail}")
         raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail={"success": False, "error": str(error)}) from error
     except Exception as error:
         print(f"[final-export] ERROR project={requested_project!r} error={error}")
         raise
+
+
+@app.post("/agent/audio-subtitle/run")
+def agent_audio_subtitle_run(request: AgentAudioSubtitleRunRequest):
+    from agents.pipeline_director import run_audio_subtitle_only
+
+    project_slug, project_dir = resolve_project_dir(request.selected_project)
+    return run_audio_subtitle_only(
+        project_slug,
+        project_dir,
+        selected_cuts=request.selected_cuts,
+        storyboard_id=request.storyboard_id,
+        force_short_dialogue=request.force_short_dialogue,
+    )
+
+
+@app.post("/agent/export/final")
+def agent_export_final(request: AgentExportFinalRequest):
+    from agents.pipeline_director import run_export_only
+
+    project_slug, project_dir = resolve_project_dir(request.selected_project)
+    try:
+        payload = run_export_only(
+            project_slug,
+            project_dir,
+            selected_cuts=request.selected_cuts,
+            source=request.source,
+        )
+        export_body = payload.get("export") or {}
+        return {
+            **export_body,
+            "source": payload.get("source"),
+            "timeline_status": payload.get("timeline_status"),
+            "selected_cuts": payload.get("selected_cuts"),
+        }
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail={"success": False, "error": str(error)}) from error
+
+
+@app.post("/agent/pipeline/generate-all")
+def agent_pipeline_generate_all(request: AgentPipelineGenerateAllRequest):
+    from agents.pipeline_director import GenerateAllPipelineInput, run_generate_all_pipeline
+
+    project_slug, project_dir = resolve_project_dir(request.selected_project)
+    try:
+        result = run_generate_all_pipeline(
+            GenerateAllPipelineInput(
+                project_slug=project_slug,
+                project_dir=project_dir,
+                selected_cuts=request.selected_cuts,
+                storyboard_id=request.storyboard_id,
+                force_short_dialogue=request.force_short_dialogue,
+                run_final_export=request.run_final_export,
+                export_source=request.export_source,
+            )
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail={"success": False, "error": str(error)}) from error
+
+    return {
+        "success": result.success,
+        "project": result.project,
+        "selected_cuts": result.selected_cuts,
+        "audio_subtitle": result.audio_subtitle,
+        "final_export": result.final_export,
+        "steps": result.steps,
+    }
 
 
 @app.post("/project-motion-prompt")
@@ -6096,8 +8856,8 @@ def _scenario_narration_from_scene(scene: str, cut_number: int) -> str:
     return f"{text[:25]}…"
 
 
-def build_dog_cafe_storyline_cuts(subject: str) -> list[dict]:
-    return [
+def build_dog_cafe_storyline_cuts(subject: str, cut_count: int | None = None) -> list[dict]:
+    base_cuts = [
         {
             "cut": 1,
             "scene": f"애견카페 입구 근처에서 다른 강아지 친구들을 발견하는 {subject}",
@@ -6134,16 +8894,24 @@ def build_dog_cafe_storyline_cuts(subject: str) -> list[dict]:
             "subtitle": "오늘도 즐거웠어.",
         },
     ]
+    return expand_cut_flow_items(base_cuts, normalize_cut_count(cut_count, None))
 
 
-def build_scenario_options(topic: str, style: str = "", duration: int = 15) -> GenerateScenarioOptionsResponse:
+def build_scenario_options(
+    topic: str,
+    style: str = "",
+    duration: int = 15,
+    cut_count: int | None = None,
+) -> GenerateScenarioOptionsResponse:
     normalized_topic = topic.strip()
     style_hint = style.strip() or "코믹한 영상"
+    resolved_cut_count = normalize_cut_count(cut_count, duration)
     subject = scenario_subject_from_topic(normalized_topic)
     style_clause = f" ({style_hint})" if style_hint else ""
+    cut_count_label = f"{resolved_cut_count}컷"
 
     if topic_implies_dog_cafe(normalized_topic):
-        cafe_cuts = build_dog_cafe_storyline_cuts(subject)
+        cafe_cuts = build_dog_cafe_storyline_cuts(subject, resolved_cut_count)
         comic_cuts = cafe_cuts
         emotional_cuts = [
             {**item, "emotion": "설렘" if item["cut"] <= 2 else item["emotion"]}
@@ -6251,9 +9019,13 @@ def build_scenario_options(topic: str, style: str = "", duration: int = 15) -> G
             {"cut": 4, "scene": "반전 이후 감정 정리", "emotion": "전환"},
             {"cut": 5, "scene": "새로운 결론으로 짧게 마무리", "emotion": "반전"},
         ]
-        comic_summary = f"'{normalized_topic}'을(를) 코믹하게 풀어낸{style_clause} 가벼운 5컷 이야기."
-        emotional_summary = f"'{normalized_topic}'의 감정선을 따라가는{style_clause} 잔잔한 5컷 이야기."
-        twist_summary = f"'{normalized_topic}'의 끝에서{style_clause} 짧은 반전이 터지는 5컷 이야기."
+        comic_summary = f"'{normalized_topic}'을(를) 코믹하게 풀어낸{style_clause} 가벼운 {cut_count_label} 이야기."
+        emotional_summary = f"'{normalized_topic}'의 감정선을 따라가는{style_clause} 잔잔한 {cut_count_label} 이야기."
+        twist_summary = f"'{normalized_topic}'의 끝에서{style_clause} 짧은 반전이 터지는 {cut_count_label} 이야기."
+
+    comic_cuts = expand_cut_flow_items(comic_cuts, resolved_cut_count)
+    emotional_cuts = expand_cut_flow_items(emotional_cuts, resolved_cut_count)
+    twist_cuts = expand_cut_flow_items(twist_cuts, resolved_cut_count)
 
     def _build_option(option_id: str, title: str, summary: str, tone: str, raw_cuts: list[dict]) -> ScenarioOption:
         cut_flow: list[ScenarioCutFlowItem] = []
@@ -6307,11 +9079,17 @@ def build_scenario_options(topic: str, style: str = "", duration: int = 15) -> G
         topic=normalized_topic,
         style=style_hint,
         duration=int(duration),
+        cut_count=resolved_cut_count,
         scenarios=scenarios,
     )
 
 
-def build_storyline_from_scenario(topic: str, scenario: ScenarioOption, style: str = "") -> GenerateStorylineResponse:
+def build_storyline_from_scenario(
+    topic: str,
+    scenario: ScenarioOption,
+    style: str = "",
+    cut_count: int | None = None,
+) -> GenerateStorylineResponse:
     normalized_topic = topic.strip() or scenario.summary[:40]
     style_hint = style.strip()
     tone = scenario.tone.strip()
@@ -6325,15 +9103,29 @@ def build_storyline_from_scenario(topic: str, scenario: ScenarioOption, style: s
     if style_hint and style_hint not in summary:
         summary = f"{summary} ({style_hint})"
 
+    resolved_cut_count = normalize_cut_count(cut_count or len(scenario.cut_flow), None)
+    raw_cuts = [
+        {
+            "cut": item.cut,
+            "scene": item.scene,
+            "emotion": item.emotion,
+            "narration": item.narration,
+            "subtitle": item.subtitle,
+        }
+        for item in scenario.cut_flow
+    ]
+    expanded_cuts = expand_cut_flow_items(raw_cuts, resolved_cut_count)
+
     cut_flow: list[StorylineCutItem] = []
-    for item in scenario.cut_flow:
-        scene = normalize_cut_scene_for_topic(item.scene.strip(), item.cut, normalized_topic)
-        emotion = item.emotion.strip()
-        narration = (item.narration or _scenario_narration_from_scene(scene, item.cut)).strip()
-        subtitle = (item.subtitle or narration).strip()
+    for item in expanded_cuts:
+        cut_number = int(item.get("cut") or len(cut_flow) + 1)
+        scene = normalize_cut_scene_for_topic(str(item.get("scene", "")).strip(), cut_number, normalized_topic)
+        emotion = str(item.get("emotion", "")).strip()
+        narration = (str(item.get("narration", "")).strip() or _scenario_narration_from_scene(scene, cut_number)).strip()
+        subtitle = (str(item.get("subtitle", "")).strip() or narration).strip()
         cut_flow.append(
             StorylineCutItem(
-                cut=item.cut,
+                cut=cut_number,
                 scene=scene,
                 emotion=emotion,
                 narration=narration,
@@ -6349,9 +9141,10 @@ def build_storyline_from_scenario(topic: str, scenario: ScenarioOption, style: s
     )
 
 
-def build_mock_storyline(topic: str, style: str = "") -> GenerateStorylineResponse:
+def build_mock_storyline(topic: str, style: str = "", cut_count: int | None = None) -> GenerateStorylineResponse:
     normalized_topic = topic.strip()
     style_hint = style.strip()
+    resolved_cut_count = normalize_cut_count(cut_count, None)
     subject = "뽀식이" if "뽀식" in normalized_topic else "주인공"
 
     if "퇴근" in normalized_topic:
@@ -6403,7 +9196,7 @@ def build_mock_storyline(topic: str, style: str = "") -> GenerateStorylineRespon
             f"{subject}는 같은 애견카페 안에서 다른 친구 강아지들과 {normalized_topic}. "
             "장소는 변하지 않고 표정과 포즈만 달라지며 이야기가 이어진다."
         )
-        cuts = build_dog_cafe_storyline_cuts(subject)
+        cuts = build_dog_cafe_storyline_cuts(subject, resolved_cut_count)
     elif "루틴" in normalized_topic:
         story_arc = "도입-관찰-반응-전개-마무리"
         summary = (
@@ -6492,6 +9285,8 @@ def build_mock_storyline(topic: str, style: str = "") -> GenerateStorylineRespon
             },
         ]
 
+    cuts = expand_cut_flow_items(cuts, resolved_cut_count)
+
     return GenerateStorylineResponse(
         topic=normalized_topic,
         summary=summary,
@@ -6509,6 +9304,7 @@ def build_cut_prompts_from_storyline(
     style: str = "",
     summary: str = "",
     cut_flow: list[Any],
+    cut_count: int | None = None,
 ) -> GenerateCutPromptsResponse:
     normalized_topic = topic.strip()
     style_hint = style.strip() or "cinematic"
@@ -6532,13 +9328,14 @@ def build_cut_prompts_from_storyline(
     if not parsed_flow:
         raise HTTPException(status_code=400, detail="Storyline cut_flow is empty.")
 
-    while len(parsed_flow) < 5:
+    resolved_cut_count = normalize_cut_count(cut_count or len(parsed_flow), None)
+    while len(parsed_flow) < resolved_cut_count:
         parsed_flow.append(parsed_flow[-1])
-    parsed_flow = parsed_flow[:5]
+    parsed_flow = parsed_flow[:resolved_cut_count]
 
     cuts: list[CutPromptItem] = []
     for index, flow_item in enumerate(parsed_flow, start=1):
-        cut_type = CUT_PROMPT_TYPE_SEQUENCE[index - 1]
+        cut_type = get_cut_prompt_type(index, resolved_cut_count)
         flow_line = " ".join(
             part for part in (flow_item["scene"], flow_item["narration"], flow_item["subtitle"], flow_item["emotion"]) if part
         ).strip()
@@ -7007,7 +9804,8 @@ def create_video_job_manifest(
         clip_json_file = clip_dir / f"{cut_name}.json"
         prompt_txt_file = clip_dir / "prompt.txt"
         continuity_notes_file = clip_dir / "continuity_notes.txt"
-        video_path.touch()
+        if video_path.exists() and not is_usable_mp4(video_path):
+            quarantine_invalid_mp4(video_path, reason="job placeholder or invalid mp4")
 
         prompt_payload = {
             "cut_number": cut.cut_number,
@@ -7484,32 +10282,364 @@ def sync_motion_selection(request: MotionSelectionRequest):
     }
 
 
-@app.post("/generate-video-clip", response_model=GenerateVideoClipResponse)
-def generate_video_clip(request: GenerateVideoClipRequest):
+@app.post("/generate-video-log-client-failure")
+def generate_video_log_client_failure(payload: GenerateVideoClientFailureLog):
+    cut_id = payload.cut_id or (format_cut_id(payload.cut_number) if payload.cut_number else "unknown")
+    video_prompt = coerce_video_prompt_text(payload.video_prompt)
+    log_generate_video_start(
+        project_id=payload.project_id or "(none)",
+        storyboard_id=payload.storyboard_id or "(none)",
+        cut_id=cut_id,
+        cut_index=payload.cut_index,
+        provider=payload.provider or "unknown",
+        image_path=payload.image_path,
+        video_prompt=video_prompt,
+    )
+    log_generate_video_failed(
+        cut_id=cut_id,
+        provider=payload.provider or "unknown",
+        error=payload.error_message or "Unknown client-side video generation failure",
+        error_type=payload.error_type or "ClientValidationError",
+    )
+    return {"logged": True, "cut_id": cut_id}
+
+
+def normalize_minimal_generate_video_payload(data: dict) -> dict:
+    normalized = dict(data or {})
+    project_id = str(normalized.get("project_id") or normalized.get("selected_project") or DEFAULT_PROJECT_SLUG).strip()
+    normalized["selected_project"] = project_id
+    normalized["project_id"] = project_id
+
+    video_prompt = str(normalized.get("video_prompt") or normalized.get("motion_prompt") or "").strip()
+    normalized["video_prompt"] = video_prompt
+    normalized["motion_prompt"] = video_prompt
+
+    cut_number = normalized.get("cut_number")
+    if cut_number is None:
+        parsed_cut_number = parse_cut_id(normalized.get("cut_id"))
+        cut_number = parsed_cut_number if parsed_cut_number > 0 else 1
+    normalized["cut_number"] = int(cut_number)
+
+    if normalized.get("cut_id") is None:
+        normalized["cut_id"] = format_cut_id(normalized["cut_number"])
+
+    image_path = normalize_web_path(
+        str(normalized.get("image_path") or normalized.get("image_url") or "").strip(),
+        keep_query=True,
+    )
+    if not image_path:
+        image_path = "/"
+    normalized["image_path"] = image_path
+    if normalized.get("image_url"):
+        normalized["image_url"] = normalize_web_path(str(normalized["image_url"]), keep_query=True)
+    if normalized.get("public_base_url"):
+        normalized["public_base_url"] = str(normalized["public_base_url"]).strip().rstrip("/")
+
+    if normalized.get("duration") is None:
+        normalized["duration"] = 5.0
+
+    if normalized.get("motion_enabled") is None:
+        normalized["motion_enabled"] = True
+
+    if normalized.get("provider") is None:
+        normalized["provider"] = "replicate"
+
+    return normalized
+
+
+def is_generate_video_debug_mode(data: dict | None) -> bool:
+    if os.getenv("GENERATE_VIDEO_DEBUG_ONLY", "").strip().lower() in {"1", "true", "yes"}:
+        return True
+    if not isinstance(data, dict):
+        return False
+    if data.get("video_debug") is True:
+        return True
+    if data.get("debug_only") is True:
+        return True
+    return False
+
+
+def build_video_generation_error_response(
+    error: str,
+    *,
+    detail: str = "",
+    status_code: int = 400,
+    **extra,
+) -> JSONResponse:
+    payload = {
+        "success": False,
+        "error": error,
+        "detail": detail or error,
+        **extra,
+    }
+    if is_insufficient_credit_error(detail or error):
+        payload["error_category"] = "insufficient_credit"
+        if status_code == 400:
+            status_code = 402
+    return JSONResponse(status_code=status_code, content=payload)
+
+
+def is_insufficient_credit_error(detail: str) -> bool:
+    text = str(detail or "").lower()
+    return (
+        "insufficient credit" in text
+        or "purchase credit" in text
+        or "account/billing" in text
+        or "billing#" in text
+    )
+
+
+def infer_video_generation_error_status(detail: str, default: int = 400) -> int:
+    if is_insufficient_credit_error(detail):
+        return 402
+    return default
+
+
+def resolve_public_start_image_url_with_logs(image_path: str) -> tuple[str, str]:
+    before = ""
+    try:
+        before = build_public_image_url(image_path)
+    except Exception as exc:
+        before = f"(error: {exc})"
+    flush_server_log(f"[public-image-url-before-normalize] {before}")
+
+    after = ""
+    if before and not before.startswith("(error"):
+        after = normalize_web_path(before, keep_query=True)
+    elif image_path:
+        try:
+            after = normalize_web_path(build_public_image_url(image_path), keep_query=True)
+        except Exception:
+            after = normalize_web_path(image_path, keep_query=True)
+    flush_server_log(f"[public-image-url-after-normalize] {after}")
+    return before, after
+
+
+def log_local_image_file_check(image_path: str) -> str | None:
+    local_path = resolve_local_image_path(image_path)
+    flush_server_log("[local-image-file-check]")
+    if local_path is None:
+        flush_server_log("exists: unknown")
+        flush_server_log("size: unknown")
+        return None
+    exists = local_path.exists()
+    size = local_path.stat().st_size if exists else 0
+    flush_server_log(f"exists: {str(exists).lower()}")
+    flush_server_log(f"size: {size}")
+    if not exists:
+        return f"image file not found: {local_path}"
+    if size <= 0:
+        return f"image file is empty: {local_path}"
+    return None
+
+
+@app.post("/debug-ping-video")
+async def debug_ping_video(request: Request):
+    flush_server_log("[debug-ping-video-entered]")
+    flush_server_log("[debug-ping-video-before-json]")
+    data = await request.json()
+    flush_server_log(f"[debug-ping-video-after-json] {list(data.keys()) if isinstance(data, dict) else type(data)}")
+    if isinstance(data, dict):
+        preview = {key: (str(value)[:120] + "…") if key == "video_prompt" and len(str(value)) > 120 else value for key, value in data.items()}
+        flush_server_log(f"[debug-ping-video-data] {preview}")
+    else:
+        flush_server_log(f"[debug-ping-video-data] {data}")
+    return {"ok": True, "received": data}
+
+
+@app.post("/generate-video-clip")
+async def generate_video_clip(request: Request):
+    """Generate a single cut video clip; supports video_debug short-circuit before Replicate."""
+    flush_server_log("[api-generate-video-entered] /generate-video-clip")
+    print("[api-generate-video-before-json]", flush=True)
+    flush_server_log("[api-generate-video-before-json]")
+    try:
+        data = await request.json()
+    except Exception as exc:
+        flush_server_log(f"[api-generate-video-json-error] {exc}")
+        return build_video_generation_error_response(
+            "Invalid JSON body",
+            detail=str(exc),
+            status_code=400,
+        )
+
+    keys = list(data.keys()) if isinstance(data, dict) else type(data)
+    print(f"[api-generate-video-after-json] {keys}", flush=True)
+    flush_server_log(f"[api-generate-video-after-json] {keys}")
+
+    video_debug = is_generate_video_debug_mode(data if isinstance(data, dict) else None)
+    flush_server_log(f"[api-generate-video-debug-mode] {str(video_debug).lower()}")
+
+    if video_debug and isinstance(data, dict):
+        image_path = normalize_web_path(
+            str(data.get("image_path") or data.get("image_url") or "").strip(),
+            keep_query=False,
+        ) or "/"
+        _before_url, public_start_image_url = resolve_public_start_image_url_with_logs(image_path)
+        flush_server_log("[api-generate-video-debug-return]")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ok": True,
+                "debug_only": True,
+                "video_debug": True,
+                "cut_id": data.get("cut_id"),
+                "provider": data.get("provider"),
+                "public_start_image_url": public_start_image_url,
+                "received_keys": list(data.keys()),
+            },
+        )
+
+    if isinstance(data, dict):
+        preview = {
+            key: (str(value)[:120] + "…") if key == "video_prompt" and len(str(value)) > 120 else value
+            for key, value in data.items()
+        }
+        flush_server_log(f"[api-generate-video-data] {preview}")
+    else:
+        flush_server_log(f"[api-generate-video-data] {data}")
+
+    flush_server_log("[api-generate-video-validate-start]")
+    try:
+        normalized = normalize_minimal_generate_video_payload(data if isinstance(data, dict) else {})
+        parsed = GenerateVideoClipRequest.model_validate(normalized)
+    except ValidationError as exc:
+        detail = json.dumps(exc.errors(), ensure_ascii=False)
+        flush_server_log(f"[api-generate-video-validation-error] {detail}")
+        return build_video_generation_error_response(
+            "Validation failed",
+            detail=detail,
+            status_code=422,
+        )
+
+    cut_id = format_cut_id(parsed.cut_number)
+    provider_name = (parsed.provider or "").strip().lower()
+    image_path = normalize_web_path(str(parsed.image_path or "").strip(), keep_query=False) or "/"
+    parsed.image_path = image_path
+
+    flush_server_log("[api-generate-video-url-normalized]")
+    _before_url, public_start_image_url = resolve_public_start_image_url_with_logs(image_path)
+
+    if provider_name == "replicate" and public_start_image_url:
+        is_valid, url_reason = validate_replicate_start_image_url(public_start_image_url)
+        if not is_valid:
+            return build_video_generation_error_response(
+                "invalid public image URL",
+                detail=url_reason or "public_start_image_url failed format validation",
+                status_code=400,
+                public_start_image_url=public_start_image_url,
+            )
+
+        local_file_error = log_local_image_file_check(image_path)
+        if local_file_error:
+            return build_video_generation_error_response(
+                local_file_error,
+                detail=local_file_error,
+                status_code=400,
+                public_start_image_url=public_start_image_url,
+            )
+
+        flush_server_log("[skip-self-public-url-check]")
+        flush_server_log("reason: avoid server self-calling ngrok during generate-video endpoint")
+
+    try:
+        flush_server_log("[api-generate-video-replicate-start]")
+        return await run_in_threadpool(_generate_video_clip_impl, parsed)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else json.dumps(exc.detail, ensure_ascii=False)
+        flush_server_log(f"[api-generate-video-failed] HTTP {exc.status_code}: {detail}")
+        return build_video_generation_error_response(
+            str(detail),
+            detail=str(detail),
+            status_code=exc.status_code,
+            public_start_image_url=public_start_image_url,
+        )
+    except Exception as exc:
+        flush_server_log(f"[api-generate-video-failed] {exc.__class__.__name__}: {exc}")
+        traceback.print_exc()
+        return build_video_generation_error_response(
+            "Video generation failed",
+            detail=str(exc),
+            status_code=500,
+            public_start_image_url=public_start_image_url,
+        )
+
+
+def _generate_video_clip_impl(request: GenerateVideoClipRequest):
     resolve_project_dir(request.selected_project)
     provider_name = request.provider.strip().lower()
-    if request.disallow_mock_provider and provider_name == "mock":
-        raise HTTPException(
-            status_code=400,
-            detail="Mock video provider is not allowed for pipeline generation. Select replicate.",
-        )
-    if request.cut_id is not None and request.cut_id != request.cut_number:
-        raise HTTPException(status_code=400, detail="cut_id must match cut_number for single-cut generation.")
-    if request.selected_cut is not None and request.selected_cut != request.cut_number:
-        raise HTTPException(status_code=400, detail="selected_cut must match cut_number for single-cut generation.")
-    if request.motion_enabled and not request.motion_prompt.strip():
-        raise HTTPException(status_code=400, detail="motion_prompt is required when motion_enabled is true.")
+    cut_id = format_cut_id(request.cut_number)
+    _project_slug, selected_project_dir = resolve_project_dir(request.selected_project)
+    storyboard_id = current_storyboard_id(selected_project_dir)
+    video_prompt = coerce_video_prompt_text(request.motion_prompt or request.image_prompt)
+    image_path = normalize_web_path(str(request.image_path or "").strip(), keep_query=False) or "/"
+    request.image_path = image_path
+    local_image_url = image_path
+    public_start_image_url = ""
+    if provider_name == "replicate" and image_path:
+        try:
+            public_start_image_url = build_public_image_url(image_path)
+        except Exception:
+            public_start_image_url = ""
 
-    if provider_name == "replicate":
-        local_image = resolve_local_image_path(request.image_path)
-        if local_image is not None and not local_image.exists():
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Start image not found for CUT {request.cut_number}: {local_image}. "
-                    "Regenerate storyboard images before Replicate video generation."
-                ),
-            )
+    log_generate_video_start(
+        project_id=request.selected_project,
+        storyboard_id=storyboard_id,
+        cut_id=cut_id,
+        cut_index=request.cut_index,
+        provider=provider_name,
+        image_path=image_path,
+        video_prompt=video_prompt,
+        local_image_url=local_image_url,
+        public_start_image_url=public_start_image_url,
+    )
+
+    def fail_video_generation(
+        detail: str,
+        *,
+        error_type: str = "ValidationError",
+        exc: BaseException | None = None,
+        status_code: int = 400,
+        replicate_detail: str = "",
+    ) -> None:
+        log_generate_video_failed(
+            cut_id=cut_id,
+            provider=provider_name,
+            error=detail,
+            error_type=error_type,
+            replicate_detail=replicate_detail,
+            exc=exc,
+        )
+        raise HTTPException(status_code=status_code, detail=detail)
+
+    if provider_name == "openai":
+        fail_video_generation(
+            "OpenAI는 현재 음성(나레이션) 생성용입니다. "
+            "영상 생성은 Video Provider에서 Replicate를 선택해주세요.",
+            error_type="UnsupportedProvider",
+        )
+    if request.disallow_mock_provider and provider_name == "mock":
+        fail_video_generation(
+            "Mock video provider is not allowed for pipeline generation. Select replicate.",
+            error_type="UnsupportedProvider",
+        )
+    if request.cut_id is not None and parse_cut_id(request.cut_id) not in (0, request.cut_number):
+        fail_video_generation("cut_id must match cut_number for single-cut generation.")
+    if request.selected_cut is not None and request.selected_cut != request.cut_number:
+        fail_video_generation("selected_cut must match cut_number for single-cut generation.")
+
+    validation_error = validate_cut_for_video_generation(
+        request,
+        project_dir=selected_project_dir,
+        storyboard_id=storyboard_id,
+    )
+    if validation_error:
+        fail_video_generation(validation_error)
+
+    if request.motion_enabled and not video_prompt:
+        fail_video_generation("motion_prompt is required when motion_enabled is true.")
+
+    request.motion_prompt = video_prompt
 
     created_at = datetime.now(timezone.utc).isoformat()
     if request.job_id:
@@ -7540,11 +10670,6 @@ def generate_video_clip(request: GenerateVideoClipRequest):
                 scene_context_prompt=request.scene_context_prompt,
                 continuity_constraints=request.continuity_constraints,
             )
-            if provider_name == "replicate":
-                print(
-                    f"[video] Generating CUT {request.cut_number} with replicate "
-                    f"(project={request.selected_project}, job={job_id})"
-                )
             provider_result = provider.generate_clip(provider_request)
             print(
                 f"[video] CUT {request.cut_number} completed · provider={provider_result.provider} "
@@ -7572,9 +10697,42 @@ def generate_video_clip(request: GenerateVideoClipRequest):
                 image_prompt=request.image_prompt,
             )
             print("Still hold completed")
-    except HTTPException:
+    except HTTPException as http_error:
+        log_generate_video_failed(
+            cut_id=cut_id,
+            provider=provider_name,
+            error=str(http_error.detail),
+            error_type="HTTPException",
+            exc=http_error,
+        )
         raise
     except Exception as error:
+        replicate_detail = ""
+        replicate_result_path = job_dir / f"cut_{request.cut_number}_replicate_result.json"
+        if replicate_result_path.exists():
+            try:
+                replicate_payload = read_json_file(replicate_result_path) or {}
+                replicate_detail = json.dumps(
+                    {
+                        "error": replicate_payload.get("error"),
+                        "error_type": replicate_payload.get("error_type"),
+                        "message": replicate_payload.get("message"),
+                        "model": replicate_payload.get("model"),
+                        "start_image_source": replicate_payload.get("start_image_source"),
+                    },
+                    ensure_ascii=False,
+                )
+            except Exception:
+                replicate_detail = f"Could not read {replicate_result_path.name}"
+
+        log_generate_video_failed(
+            cut_id=cut_id,
+            provider=provider_name,
+            error=str(error),
+            error_type=error.__class__.__name__,
+            replicate_detail=replicate_detail,
+            exc=error,
+        )
         failure_manifest = {
             "job_id": job_id,
             "status": "failed",
@@ -7582,7 +10740,11 @@ def generate_video_clip(request: GenerateVideoClipRequest):
             "selected_project": request.selected_project,
             "created_at": created_at,
             "cut_number": request.cut_number,
-            "cut_id": request.cut_id or request.cut_number,
+            "cut_id": cut_id,
+            "storyboard_id": storyboard_id,
+            "project_id": request.selected_project,
+            "source_prompt": request.motion_prompt or request.image_prompt,
+            "video_prompt": request.motion_prompt,
             "selected_cut": request.selected_cut,
             "cut_type": request.cut_type,
             "visual_style_lock": request.visual_style_lock,
@@ -7622,14 +10784,52 @@ def generate_video_clip(request: GenerateVideoClipRequest):
                 "clip_metadata": [failure_manifest],
             },
         )
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        raise HTTPException(
+            status_code=infer_video_generation_error_status(str(error)),
+            detail=str(error),
+        ) from error
 
-    clip_path = Path(result["clip_path"])
-    clip_url = ""
     try:
-        clip_url = f"/generated_clips/{clip_path.relative_to(GENERATED_CLIPS_DIR)}"
-    except ValueError:
-        clip_url = result["clip_path"]
+        finalized = finalize_job_cut_video(
+            job_id=result["job_id"],
+            cut_number=request.cut_number,
+            source_path=Path(result["clip_path"]),
+            provider=result["provider"],
+            prompt=video_prompt,
+            project_id=request.selected_project,
+            storyboard_id=storyboard_id,
+            cut_index=request.cut_index,
+        )
+    except HTTPException as http_error:
+        log_generate_video_failed(
+            cut_id=cut_id,
+            provider=provider_name,
+            error=str(http_error.detail),
+            error_type="FinalizeHTTPException",
+            exc=http_error,
+        )
+        raise
+    except Exception as error:
+        invalid_path = Path(result["clip_path"])
+        if invalid_path.exists():
+            validation = validate_playable_mp4(invalid_path)
+            if not validation["valid"]:
+                quarantine_invalid_mp4(invalid_path, reason=validation["errors"])
+        log_generate_video_failed(
+            cut_id=cut_id,
+            provider=provider_name,
+            error=str(error),
+            error_type=error.__class__.__name__,
+            exc=error,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="영상 파일이 정상 생성되지 않았습니다. 다시 생성해주세요.",
+        ) from error
+
+    clip_path = Path(finalized["clip_path"])
+    clip_url = finalized["clip_url"]
+    video_url = finalized["video_url"]
     latest_video_url = sync_latest_cut_video(
         clip_path=clip_path,
         source_job_id=result["job_id"],
@@ -7637,11 +10837,32 @@ def generate_video_clip(request: GenerateVideoClipRequest):
         clip_url=clip_url,
         message=result["message"],
     )
+    if not latest_video_url:
+        log_generate_video_failed(
+            cut_id=cut_id,
+            provider=provider_name,
+            error="latest_video_url sync failed after generation",
+            error_type="LatestVideoSyncError",
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="영상 파일이 정상 생성되지 않았습니다. 다시 생성해주세요.",
+        )
+    log_generate_video_success(
+        cut_id=cut_id,
+        video_path=str(clip_path),
+        video_url=str(video_url),
+        duration=finalized.get("duration"),
+        file_size=finalized.get("file_size"),
+    )
 
     response_status = (
         "completed" if result["status"] in {"completed", "mock_completed", "replicate_completed"} else result["status"]
     )
-    clip_duration = float(still_hold_duration) if not request.motion_enabled else float(request.duration)
+    clip_duration = float(
+        finalized.get("duration")
+        or (still_hold_duration if not request.motion_enabled else request.duration)
+    )
     root_manifest = {
         "job_id": result["job_id"],
         "status": response_status,
@@ -7650,7 +10871,11 @@ def generate_video_clip(request: GenerateVideoClipRequest):
         "selected_project": request.selected_project,
         "created_at": created_at,
         "cut_number": request.cut_number,
-        "cut_id": request.cut_id or request.cut_number,
+        "cut_id": cut_id,
+        "storyboard_id": storyboard_id,
+        "project_id": request.selected_project,
+        "source_prompt": request.motion_prompt or request.image_prompt,
+        "video_prompt": request.motion_prompt,
         "selected_cut": request.selected_cut,
         "cut_type": request.cut_type,
         "visual_style_lock": request.visual_style_lock,
@@ -7674,10 +10899,13 @@ def generate_video_clip(request: GenerateVideoClipRequest):
         "motion_enabled": request.motion_enabled,
         "timeline_type": timeline_type,
         "still_hold_duration": still_hold_duration,
-        "clip_path": result["clip_path"],
+        "clip_path": str(clip_path),
         "clip_url": clip_url,
-        "video_url": clip_url,
+        "video_url": video_url,
         "latest_video_url": latest_video_url,
+        "video_filename": finalized.get("video_filename") or clip_path.name,
+        "file_size": finalized.get("file_size") or 0,
+        "prompt_hash": finalized.get("prompt_hash") or "",
         "video_prompt_txt": result["prompt_path"],
         "clip_manifest_file": result["manifest_path"],
         "message": result["message"],
@@ -7690,15 +10918,20 @@ def generate_video_clip(request: GenerateVideoClipRequest):
     write_json(manifest_file, root_manifest)
     clip_payload = {
         "cut_number": request.cut_number,
-        "cut_id": request.cut_id or request.cut_number,
+        "cut_id": cut_id,
+        "storyboard_id": storyboard_id,
+        "project_id": request.selected_project,
         "status": response_status,
         "video_status": response_status,
         "provider_status": result["status"],
         "provider": result["provider"],
         "selected_project": request.selected_project,
-        "video_file": result["clip_path"],
-        "video_url": clip_url,
+        "video_file": str(clip_path),
+        "video_url": video_url,
         "latest_video_url": latest_video_url,
+        "video_filename": finalized.get("video_filename") or clip_path.name,
+        "file_size": finalized.get("file_size") or 0,
+        "prompt_hash": finalized.get("prompt_hash") or "",
         "duration": clip_duration,
         "clip_duration": clip_duration,
         "image_prompt": request.image_prompt,
@@ -7739,20 +10972,26 @@ def generate_video_clip(request: GenerateVideoClipRequest):
         status=response_status,
         provider_status=result["status"],
         selected_cut=request.selected_cut,
-        clip_path=result["clip_path"],
+        clip_path=str(clip_path),
         provider=result["provider"],
         message=result["message"],
         manifest_file=str(manifest_file),
         render_manifest_file=str(render_manifest_file),
         render_manifest_url=render_manifest_url,
         clip_url=clip_url,
-        video_url=clip_url,
+        video_url=video_url,
         latest_video_url=latest_video_url,
         prompt_txt_file=result["prompt_path"],
         clip_manifest_file=result["manifest_path"],
         motion_enabled=request.motion_enabled,
         timeline_type=timeline_type,
         still_hold_duration=still_hold_duration,
+        cut_id=cut_id,
+        video_filename=finalized.get("video_filename") or clip_path.name,
+        file_size=int(finalized.get("file_size") or 0),
+        duration=float(finalized.get("duration") or clip_duration),
+        prompt_hash=finalized.get("prompt_hash") or "",
+        created_at=finalized.get("created_at") or created_at,
     )
 
 
@@ -7770,7 +11009,7 @@ def generate_sequentially(request: GenerateSequentiallyRequest):
             detail=f"CUT {cut.cut_number} is a still frame (motion_enabled=false) and is skipped from the video queue.",
         )
 
-    return generate_video_clip(
+    return _generate_video_clip_impl(
         GenerateVideoClipRequest(
             cut_number=cut.cut_number,
             selected_cut=request.selected_cut,
@@ -7797,12 +11036,27 @@ def generate_sequentially(request: GenerateSequentiallyRequest):
     )
 
 
+def cleanup_invalid_job_placeholders(job_id: str) -> int:
+    job_dir = GENERATED_CLIPS_DIR / job_id
+    if not job_dir.exists():
+        return 0
+
+    removed = 0
+    for video_path in sorted(job_dir.rglob("*.mp4")):
+        if validate_playable_mp4(video_path)["valid"]:
+            continue
+        quarantine_invalid_mp4(video_path, reason="invalid placeholder or corrupt mp4")
+        removed += 1
+    return removed
+
+
 @app.get("/video-jobs/{job_id}", response_model=VideoJobResponse)
 def get_video_job(job_id: str):
     manifest_path = VIDEO_JOBS_DIR / job_id / "manifest.json"
     if not manifest_path.exists():
         raise HTTPException(status_code=404, detail="Video job not found")
 
+    cleanup_invalid_job_placeholders(job_id)
     return VideoJobResponse(**json.loads(manifest_path.read_text(encoding="utf-8")))
 
 
@@ -8062,9 +11316,16 @@ def create_video_plan(request: VideoPlanRequest):
     selected_project, selected_project_dir = resolve_project_dir(request.selected_project)
     selected_project_dirs = project_asset_dirs(selected_project_dir)
     clear_project_storyboard_image_cache(selected_project, selected_project_dir)
-    update_project_metadata(selected_project, selected_project_dir, topic=request.topic, duration=request.duration)
-    base_duration = request.duration // 5
-    extra_seconds = request.duration % 5
+    cut_count = normalize_cut_count(request.cut_count, request.duration)
+    update_project_metadata(
+        selected_project,
+        selected_project_dir,
+        topic=request.topic,
+        duration=request.duration,
+        cut_count=cut_count,
+    )
+    base_duration = request.duration // cut_count
+    extra_seconds = request.duration % cut_count
     character_name = normalize_active_character_name(request.character_name)
     active_character = load_or_create_character_profile(character_name)
     canonical_reference_path = resolve_reference_image_for_character(character_name)
@@ -8082,7 +11343,7 @@ def create_video_plan(request: VideoPlanRequest):
     character_lock_prompt = f"{BPOSIK_STRONG_IDENTITY_LOCK} {character_prompt_prefix}".strip()
     continuity_constraints = dump_model(continuity_state)
 
-    cut_templates = [
+    base_cut_templates = [
         {
             "cut_type": "ESTABLISHING",
             "scene": "영상의 분위기를 여는 도입 장면. '{topic}'의 공간과 시간대가 천천히 드러난다.",
@@ -8319,6 +11580,7 @@ def create_video_plan(request: VideoPlanRequest):
             "image_prompt": "{style}, {topic}, ending shot, slow zoom out feeling, cinematic final frame",
         },
     ]
+    cut_templates = build_storyboard_cut_templates(base_cut_templates, cut_count)
 
     cuts = []
     previous_memory: dict[str, str] = {}
@@ -8520,6 +11782,7 @@ def create_video_plan(request: VideoPlanRequest):
             character_name=character_name,
         )
 
+        output_path = selected_project_dirs["images"] / f"cut_{index}.png"
         image_url, image_status, image_error, reference_frame_meta = generate_image_for_cut(
             cut_number=index,
             prompt=image_prompt,
@@ -8529,10 +11792,21 @@ def create_video_plan(request: VideoPlanRequest):
             reference_image_path=reference_file_path,
             previous_cut_image_path=previous_cut_path if previous_cut_path.exists() else None,
             use_reference_inheritance=use_reference_inheritance,
-            output_path=selected_project_dirs["images"] / f"cut_{index}.png",
+            output_path=output_path,
+        )
+        image_url, image_status, image_error = normalize_storyboard_cut_image(
+            cut_number=index,
+            image_url=image_url,
+            image_status=image_status,
+            image_error=image_error,
+            output_path=output_path,
+        )
+        print(
+            f"[storyboard] generated cut {index} image path: {output_path} "
+            f"exists={output_path.exists()} status={image_status} url={image_url or '(none)'}"
         )
         if image_status == "generated":
-            normalized_image_url = image_url.split("?", 1)[0]
+            normalized_image_url = normalize_web_path(image_url.split("?", 1)[0], keep_query=False)
             image_path = resolve_local_image_path(normalized_image_url)
             update_project_metadata(
                 selected_project,
@@ -8587,6 +11861,7 @@ def create_video_plan(request: VideoPlanRequest):
         cuts.append(
             CutPlan(
                 cut_number=index,
+                cut_id=format_cut_id(index),
                 cut_type=template["cut_type"],
                 visual_style_lock=visual_style_lock,
                 action_state=template["action_state"],
@@ -8680,15 +11955,18 @@ def create_video_plan(request: VideoPlanRequest):
                 image_url=image_url,
                 image_status=image_status,
                 image_error=image_error,
-                sample_image_url=fallback_url,
+                sample_image_url=image_url.split("?", 1)[0] if image_url else "",
                 recommended_duration=recommended_duration,
             )
         )
         previous_memory = template["continuity_memory"]
 
+    log_storyboard_cut_images(cuts)
+
     storyboard_cuts = [
         {
             "cut": cut.cut_number,
+            "cut_id": format_cut_id(cut.cut_number),
             "title": f"CUT {cut.cut_number}",
             "description": cut.scene_description,
             "motion_prompt": cut.motion_prompt,
@@ -8713,6 +11991,10 @@ def create_video_plan(request: VideoPlanRequest):
     metadata["topic"] = request.topic
     metadata["style"] = request.style
     metadata["duration"] = request.duration
+    metadata["cut_count"] = normalize_cut_count(request.cut_count or len(cuts), request.duration)
+    metadata["image_provider"] = image_provider
+    metadata.setdefault("video_provider", "replicate")
+    metadata.setdefault("audio_provider", "openai")
     metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
     write_json(project_json_path(selected_project_dir), metadata)
 
@@ -8738,6 +12020,7 @@ def create_video_plan(request: VideoPlanRequest):
         topic=request.topic,
         style=request.style,
         duration=request.duration,
+        cut_count=cut_count,
         master_character=master_character,
         scene_context=scene_context,
         reference_character=reference_character,
@@ -8749,12 +12032,9 @@ def create_video_plan(request: VideoPlanRequest):
     write_json(project_plan_path(selected_project_dir), dump_model(plan_response))
     ensure_current_run(
         selected_project_dir,
-        [
-            cut.cut_number
-            for cut in plan_response.cuts
-            if default_motion_enabled_for_cut(cut.cut_number)
-        ],
+        [cut.cut_number for cut in plan_response.cuts],
         target_duration=request.duration,
+        cut_count=cut_count,
         reset_if_changed=True,
     )
     return plan_response
@@ -8776,8 +12056,48 @@ def set_reference_character(request: SetReferenceCharacterRequest):
     )
 
 
-@app.post("/generate-narration", response_model=GenerateNarrationResponse)
-def generate_narration(request: AudioPipelineJobRequest):
+@app.post("/generate-narration")
+def generate_narration(body: dict[str, Any]):
+    if body.get("job_id"):
+        request = AudioPipelineJobRequest.model_validate(body)
+        return generate_audio_pipeline_job_narration(request)
+    if body.get("selected_project") is not None:
+        request = GenerateVoiceRequest.model_validate(body)
+        project_slug, project_dir = resolve_project_dir(request.selected_project)
+        text_map = request.text_map
+        if request.force_short_dialogue:
+            write_short_dialogue_script_for_selected_cuts(
+                project_slug,
+                project_dir,
+                selected_cuts=request.selected_cuts,
+            )
+            text_map = None
+        elif request.audio_subtitle_only:
+            script = reconcile_script_export_cuts(project_dir, selected_cuts=request.selected_cuts)
+            run = ensure_current_run(
+                project_dir,
+                script_export_cut_order(script),
+                target_duration=script.get("duration"),
+                reset_if_changed=False,
+            )
+            run["final_export_path"] = ""
+            run["final_export_url"] = ""
+            run["final_export_selected_cuts"] = []
+            write_current_run(project_dir, run)
+        return generate_project_voice(
+            project_slug,
+            project_dir,
+            selected_cuts=request.selected_cuts,
+            text_map=text_map,
+            storyboard_id=request.storyboard_id,
+        )
+    raise HTTPException(
+        status_code=400,
+        detail="Invalid /generate-narration request. Provide job_id (job pipeline) or selected_project (selected cuts).",
+    )
+
+
+def generate_audio_pipeline_job_narration(request: AudioPipelineJobRequest) -> GenerateNarrationResponse:
     if not request.cuts:
         raise HTTPException(status_code=400, detail="cuts가 비어 있습니다. storyboard narration 텍스트를 전달해 주세요.")
 
@@ -8876,12 +12196,19 @@ def generate_subtitles(request: AudioPipelineJobRequest):
 @app.post("/assemble-final-video", response_model=AssembleFinalVideoResponse)
 def assemble_final_video(request: AudioPipelineJobRequest):
     selected_project, selected_project_dir = resolve_project_dir(request.selected_project)
-    export_payload = generate_project_final_export(selected_project, selected_project_dir)
+    selected_cuts = request.selected_cuts
+    if not selected_cuts and request.cuts:
+        selected_cuts = sorted({int(item.cut) for item in request.cuts if item.cut})
+    export_payload = generate_project_final_export(
+        selected_project,
+        selected_project_dir,
+        selected_cuts=selected_cuts,
+    )
     audio_pipeline = load_or_init_audio_pipeline(request.job_id)
 
     audio_pipeline["final_export"] = {
         "status": "completed",
-        "mode": "project_ffmpeg",
+        "mode": "final_timeline",
         "path": export_payload["output_file"],
         "url": export_payload["output_url"],
         "project_path": export_payload["output_file"],
@@ -8893,11 +12220,11 @@ def assemble_final_video(request: AudioPipelineJobRequest):
         "export_logs": export_payload.get("export_logs") or [],
         "probe_summary": export_payload.get("probe_summary") or {},
         "message": export_payload.get("message", ""),
+        "final_timeline": export_payload.get("final_timeline") or [],
+        "export_order": export_payload.get("export_order") or [],
         "inputs": {
-            "video": "final/full_video.mp4",
-            "audio_dir": "audio/*.mp3",
-            "audio_count": export_payload.get("final_export", {}).get("audio_count", 0),
-            "subtitle": "subtitles/subtitle.srt",
+            "mode": "final_timeline",
+            "timeline_cut_count": len(export_payload.get("final_timeline") or []),
             "output": "exports/final_export.mp4",
             "narration_track": "exports/narration_track.mp3",
         },
@@ -8907,6 +12234,10 @@ def assemble_final_video(request: AudioPipelineJobRequest):
     return AssembleFinalVideoResponse(
         job_id=request.job_id,
         status="completed",
+        success=True,
+        final_timeline=export_payload.get("final_timeline") or [],
+        final_video_path=export_payload.get("final_video_path") or export_payload.get("output_file") or "",
+        duration=float(export_payload.get("duration") or 0) or None,
         final_export=audio_pipeline["final_export"],
         audio_pipeline=audio_pipeline,
         render_manifest_url=render_manifest_url,

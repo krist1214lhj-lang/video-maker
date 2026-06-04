@@ -20,6 +20,31 @@ class FFmpegRunError(RuntimeError):
         self.log_path = log_path
 
 
+EXPORT_DURATION_WARN_TOLERANCE = 0.7
+EXPORT_DURATION_ERROR_TOLERANCE = 1.0
+
+
+@dataclass(frozen=True)
+class FinalTimelineExportItem:
+    cut_id: str
+    cut_number: int
+    start: float
+    end: float
+    duration: float
+    video_file: Path
+    audio_file: Path
+    subtitle_text: str = ""
+
+
+@dataclass(frozen=True)
+class FinalTimelineExportInput:
+    timeline: list[FinalTimelineExportItem]
+    output_path: Path
+    subtitle_path: Path
+    bgm_track: Path | None = None
+    target_duration: float | None = None
+
+
 @dataclass(frozen=True)
 class ProjectFinalExportInput:
     video_path: Path
@@ -28,6 +53,7 @@ class ProjectFinalExportInput:
     output_path: Path
     bgm_track: Path | None = None
     audio_durations: dict[int, float] = field(default_factory=dict)
+    target_duration: float | None = None
 
 
 @dataclass(frozen=True)
@@ -394,10 +420,52 @@ def _write_video_concat_list(video_paths: list[Path], concat_list_path: Path) ->
     )
 
 
+def evaluate_export_duration_drift(target_duration: float, actual_duration: float) -> tuple[str, float]:
+    diff = abs(float(actual_duration) - float(target_duration))
+    if diff >= EXPORT_DURATION_ERROR_TOLERANCE:
+        return "error", diff
+    if diff > 0.05:
+        return "warning", diff
+    return "ok", diff
+
+
+def trim_final_export_to_duration(
+    source_path: Path,
+    target_duration: float,
+    log_path: Path,
+) -> None:
+    duration = max(0.1, float(target_duration))
+    temp_path = source_path.with_suffix(".trim.mp4")
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(source_path.resolve()),
+        "-t",
+        f"{duration:.3f}",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        str(temp_path.resolve()),
+    ]
+    _run_ffmpeg(command, log_path=log_path, label=f"trim final export to {duration:.3f}s")
+    temp_path.replace(source_path)
+
+
 def stitch_normalized_export_videos(
     normalized_paths: list[Path],
     output_path: Path,
     log_path: Path,
+    target_duration: float | None = None,
 ) -> None:
     if not normalized_paths:
         raise FFmpegRunError("No normalized export clips to stitch.", log_path=str(log_path))
@@ -442,6 +510,11 @@ def stitch_normalized_export_videos(
         _run_ffmpeg(reencode_command, log_path=log_path, label="concat normalized export cuts (re-encode)")
     finally:
         concat_list_path.unlink(missing_ok=True)
+
+    if target_duration and target_duration > 0 and output_path.exists():
+        actual_duration = float(probe_video_metadata(output_path).get("duration_seconds") or 0)
+        if actual_duration > float(target_duration) + 0.05:
+            trim_final_export_to_duration(output_path, target_duration, log_path)
 
 
 def _write_audio_concat_list(audio_tracks: list[Path], concat_list_path: Path) -> None:
@@ -646,6 +719,11 @@ def assemble_project_final_export(export_input: ProjectFinalExportInput) -> Proj
     export_logs.append("Audio merged")
 
     subtitle_filter = build_subtitle_filter(subtitle_path)
+    target_duration = float(export_input.target_duration or 0)
+    duration_limit_args: list[str] = []
+    if target_duration > 0:
+        duration_limit_args = ["-t", f"{target_duration:.3f}"]
+
     if export_input.bgm_track:
         bgm_path = export_input.bgm_track.resolve()
         command = [
@@ -679,6 +757,7 @@ def assemble_project_final_export(export_input: ProjectFinalExportInput) -> Proj
             "aac",
             "-b:a",
             "192k",
+            *duration_limit_args,
             str(output_path),
         ]
     else:
@@ -705,6 +784,7 @@ def assemble_project_final_export(export_input: ProjectFinalExportInput) -> Proj
             "aac",
             "-b:a",
             "192k",
+            *duration_limit_args,
             str(output_path),
         ]
 
@@ -724,6 +804,12 @@ def assemble_project_final_export(export_input: ProjectFinalExportInput) -> Proj
             command=command,
             log_path=str(log_path),
         )
+
+    if target_duration > 0:
+        actual_before_trim = float(probe_video_metadata(output_path).get("duration_seconds") or 0)
+        if actual_before_trim > target_duration + 0.05:
+            trim_final_export_to_duration(output_path, target_duration, log_path)
+            export_logs.append(f"Duration trimmed to {target_duration:.3f}s")
 
     probe_summary = probe_export_streams(output_path)
     if probe_summary["video_streams"] < 1:
@@ -771,4 +857,239 @@ def assemble_project_final_export(export_input: ProjectFinalExportInput) -> Proj
             "subtitle_path": str(subtitle_path),
             "output_path": str(output_path),
         },
+    )
+
+
+def _mux_final_export_video(
+    *,
+    video_path: Path,
+    narration_track_path: Path,
+    subtitle_path: Path,
+    output_path: Path,
+    bgm_track: Path | None,
+    target_duration: float,
+    log_path: Path,
+    export_logs: list[str],
+    timeline_inputs: dict,
+) -> tuple[list[str], str]:
+    subtitle_filter = build_subtitle_filter(subtitle_path)
+    duration_limit_args: list[str] = []
+    if target_duration > 0:
+        duration_limit_args = ["-t", f"{target_duration:.3f}"]
+
+    if bgm_track:
+        bgm_path = bgm_track.resolve()
+        command = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-i",
+            str(narration_track_path),
+            "-i",
+            str(bgm_path),
+            "-filter_complex",
+            (
+                "[1:a]volume=1.0[a1];"
+                "[2:a]volume=0.15[a2];"
+                "[a1][a2]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[aout]"
+            ),
+            "-vf",
+            subtitle_filter,
+            "-map",
+            "0:v:0",
+            "-map",
+            "[aout]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            *duration_limit_args,
+            str(output_path),
+        ]
+    else:
+        command = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-i",
+            str(narration_track_path),
+            "-vf",
+            subtitle_filter,
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            *duration_limit_args,
+            str(output_path),
+        ]
+
+    _run_ffmpeg(command, log_path=log_path, label="assemble final export from timeline")
+    export_logs.append("Video merged")
+    export_logs.append("Subtitle burned")
+    for line in export_logs:
+        _append_log(log_path, line, stdout=line)
+
+    if not output_path.exists() or output_path.stat().st_size < 1024:
+        raise FFmpegRunError(
+            "ffmpeg finished but final_export.mp4 was not created.",
+            command=command,
+            log_path=str(log_path),
+        )
+
+    if target_duration > 0:
+        actual_before_trim = float(probe_video_metadata(output_path).get("duration_seconds") or 0)
+        if actual_before_trim > target_duration + 0.05:
+            trim_final_export_to_duration(output_path, target_duration, log_path)
+            export_logs.append(f"Duration trimmed to {target_duration:.3f}s")
+
+    probe_summary = probe_export_streams(output_path)
+    if probe_summary["video_streams"] < 1:
+        raise FFmpegRunError(
+            "ffprobe verification failed: output has no video stream.",
+            command=command,
+            log_path=str(log_path),
+        )
+    if probe_summary["audio_streams"] < 1:
+        raise FFmpegRunError(
+            "ffprobe verification failed: output has no audio stream.",
+            command=command,
+            log_path=str(log_path),
+        )
+
+    _append_log(
+        log_path,
+        "ffprobe verification",
+        stdout=json.dumps(probe_summary, ensure_ascii=False, indent=2),
+    )
+    timeline_inputs["probe_summary"] = probe_summary
+    return export_logs, " ".join(command)
+
+
+def assemble_project_final_export_from_timeline(
+    export_input: FinalTimelineExportInput,
+) -> ProjectFinalExportResult:
+    if not shutil.which("ffmpeg"):
+        raise FFmpegNotInstalledError("ffmpeg not installed")
+
+    timeline = export_input.timeline
+    if not timeline:
+        raise FFmpegRunError("Final export timeline is empty.")
+
+    subtitle_path = export_input.subtitle_path.resolve()
+    output_path = export_input.output_path.resolve()
+    exports_dir = output_path.parent
+    log_path = exports_dir / "ffmpeg_export.log"
+    export_logs: list[str] = []
+    cleanup_paths: list[Path] = []
+
+    log_path.write_text("Final export ffmpeg log (timeline mode)\n", encoding="utf-8")
+    exports_dir.mkdir(parents=True, exist_ok=True)
+
+    if not subtitle_path.exists():
+        raise FileNotFoundError(f"Subtitle not found: {subtitle_path}")
+    if export_input.bgm_track is not None and not export_input.bgm_track.exists():
+        raise FileNotFoundError(f"BGM track not found: {export_input.bgm_track}")
+
+    normalized_paths: list[Path] = []
+    for item in timeline:
+        source_video = item.video_file.resolve()
+        if not source_video.is_file():
+            raise FileNotFoundError(f"Video not found for {item.cut_id}: {source_video}")
+        normalized_path = exports_dir / f"norm_{item.cut_id}.mp4"
+        normalize_export_cut_video(source_video, normalized_path, item.duration, log_path)
+        normalized_paths.append(normalized_path)
+
+    stitched_video_path = exports_dir / "timeline_stitched_video.mp4"
+    target_duration = float(export_input.target_duration or 0)
+    stitch_normalized_export_videos(
+        normalized_paths,
+        stitched_video_path,
+        log_path,
+        target_duration=target_duration if target_duration > 0 else None,
+    )
+
+    padded_audio_paths: list[Path] = []
+    for item in timeline:
+        source_audio = resolve_narration_track(item.audio_file.resolve(), exports_dir, log_path)
+        if source_audio.name.startswith("resolved_"):
+            cleanup_paths.append(source_audio)
+        padded_path = exports_dir / f"padded_{item.cut_id}.mp3"
+        pad_narration_track_to_duration(source_audio, item.duration, padded_path, log_path)
+        padded_audio_paths.append(padded_path)
+
+    narration_track_path = exports_dir / "narration_track.mp3"
+    if len(padded_audio_paths) == 1:
+        shutil.copy2(padded_audio_paths[0], narration_track_path)
+        _append_log(log_path, "single narration track copied", stdout="Audio merged")
+    else:
+        _concat_audio_tracks(padded_audio_paths, narration_track_path, log_path)
+        _append_log(log_path, "narration tracks concatenated", stdout="Audio merged")
+    export_logs.append("Audio merged")
+
+    if not is_valid_media_file(narration_track_path):
+        raise FFmpegRunError("Narration track merge failed.", log_path=str(log_path))
+
+    timeline_inputs = {
+        "mode": "final_timeline",
+        "timeline_cut_ids": [item.cut_id for item in timeline],
+        "video_inputs": [str(path) for path in normalized_paths],
+        "audio_inputs": [str(path) for path in padded_audio_paths],
+        "stitched_video_path": str(stitched_video_path),
+        "narration_track_path": str(narration_track_path),
+        "subtitle_path": str(subtitle_path),
+        "output_path": str(output_path),
+    }
+
+    try:
+        export_logs, ffmpeg_command = _mux_final_export_video(
+            video_path=stitched_video_path,
+            narration_track_path=narration_track_path,
+            subtitle_path=subtitle_path,
+            output_path=output_path,
+            bgm_track=export_input.bgm_track,
+            target_duration=target_duration,
+            log_path=log_path,
+            export_logs=export_logs,
+            timeline_inputs=timeline_inputs,
+        )
+    finally:
+        for path in cleanup_paths:
+            path.unlink(missing_ok=True)
+
+    media_metadata = probe_video_metadata(output_path)
+    probe_summary = timeline_inputs.get("probe_summary") or probe_export_streams(output_path)
+    message = "\n".join(export_logs)
+    return ProjectFinalExportResult(
+        status="ready",
+        output_path=str(output_path),
+        ffmpeg_command=ffmpeg_command,
+        ffmpeg_log_path=str(log_path),
+        duration_seconds=media_metadata.get("duration_seconds"),
+        duration=media_metadata.get("duration", "unknown"),
+        resolution=media_metadata.get("resolution", "unknown"),
+        file_size_bytes=media_metadata.get("file_size_bytes", 0),
+        file_size=media_metadata.get("file_size", "unknown"),
+        message=message,
+        export_logs=export_logs,
+        narration_track_path=str(narration_track_path),
+        probe_summary=probe_summary,
+        inputs=timeline_inputs,
     )
