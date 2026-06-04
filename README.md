@@ -7,6 +7,15 @@
 영화 콘티처럼 shot type, lens, camera movement, lighting, mood color 정보와 촬영감독 수준의 shot breakdown, AI 영상 생성용 start/end frame prompt, camera path, motion layer, platform-specific export prompt, cinematic continuity system, transition, sound design, background music, pacing 정보도 함께 제공합니다.
 Generate Video 버튼을 누르면 Runway 스타일의 영상 생성 작업 구조가 `video_jobs/{job_id}` 아래 생성됩니다. 각 컷은 `prompt.json`, `status.json`을 가지며, production export는 `generated_clips/{job_id}` 아래 생성됩니다. 컷별 JSON, prompt txt, continuity notes, mp4 슬롯, `render_manifest.json`, `storyboard_export.json`, `timeline_export.json`, export package zip이 함께 준비됩니다.
 
+## 문서
+
+| 문서 | 설명 |
+|------|------|
+| [AGENT.md](AGENT.md) | 작업 원칙·에이전트·버튼 규칙 |
+| [skills/README.md](skills/README.md) | 서버/ngrok/파이프라인 스킬 |
+| [docs/README.md](docs/README.md) | 보조 문서 인덱스 |
+| [backup/README.md](backup/README.md) | temp·archive 보관 |
+
 ## 설치
 
 ```bash
