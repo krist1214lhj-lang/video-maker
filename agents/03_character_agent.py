@@ -267,6 +267,7 @@ def run_character_agent(
     input_data: CharacterAgentInput,
     *,
     builder: CharacterPromptBuilder | None = None,
+    llm_mode: str | None = None,
 ) -> CharacterAgentResult:
     if not input_data.topic.strip() or not input_data.reference_character.name.strip():
         return CharacterAgentResult(
@@ -284,23 +285,61 @@ def run_character_agent(
     reference_urls = [_public_url_for_reference(root, p) for p in image_paths]
     memory = _load_memory(char_dir)
 
-    gen = builder or MockCharacterPromptBuilder()
-    profile, prompt, constraints = gen.build(
-        input_data,
-        reference_images=reference_urls,
-        memory_payload=memory,
+    from agents.llm.config import AgentLLMMode, ResolvedLLMMode
+    from agents.llm.openai_client import LLMClientError
+    from agents.llm.character_generator import (
+        builder_mode_label,
+        create_character_prompt_builder,
     )
+
+    resolved = ResolvedLLMMode(mode=AgentLLMMode.MOCK, requested=AgentLLMMode.MOCK)
+    gen = builder
+    if gen is None:
+        gen, resolved = create_character_prompt_builder(llm_mode)
+
+    fallback_error = None
+    try:
+        profile, prompt, constraints = gen.build(
+            input_data,
+            reference_images=reference_urls,
+            memory_payload=memory,
+        )
+    except LLMClientError as exc:
+        fallback_error = str(exc)
+        gen = MockCharacterPromptBuilder()
+        profile, prompt, constraints = gen.build(
+            input_data,
+            reference_images=reference_urls,
+            memory_payload=memory,
+        )
+        resolved = ResolvedLLMMode(
+            mode=AgentLLMMode.MOCK,
+            requested=resolved.requested,
+            fallback_reason="gpt_error",
+        )
+
+    meta: dict[str, Any] = {
+        "reference_image_count": len(reference_urls),
+        "memory_loaded": memory is not None,
+        "builder": builder_mode_label(gen, resolved=resolved),
+        "llm_mode": resolved.mode.value,
+        "llm_mode_requested": resolved.requested.value,
+        "llm_fallback_reason": resolved.fallback_reason,
+        "character_llm_mode": resolved.mode.value,
+        "character_llm_mode_requested": resolved.requested.value,
+        "character_llm_fallback_reason": resolved.fallback_reason,
+    }
+    if fallback_error:
+        meta["llm_error"] = fallback_error
+    if hasattr(gen, "last_meta"):
+        meta.update(getattr(gen, "last_meta") or {})
 
     return CharacterAgentResult(
         success=True,
         character_profile=profile,
         character_prompt=prompt,
         visual_constraints=constraints,
-        meta={
-            "reference_image_count": len(reference_urls),
-            "memory_loaded": memory is not None,
-            "builder": type(gen).__name__,
-        },
+        meta=meta,
     )
 
 

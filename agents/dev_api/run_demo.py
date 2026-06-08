@@ -123,6 +123,7 @@ def _character_payload(result: Any) -> dict[str, Any]:
         "character_prompt": cr.character_prompt,
         "character_profile": _to_jsonable(profile) if profile else None,
         "visual_constraints": _to_jsonable(constraints) if constraints else None,
+        "meta": _to_jsonable(cr.meta),
     }
 
 
@@ -166,6 +167,19 @@ def _demo_meta(
             story_bundles=pipeline_result.story_bundles,
         )
     )
+    character_meta = (
+        pipeline_result.character_result.meta
+        if pipeline_result.character_result
+        else {}
+    )
+    if isinstance(character_meta, dict):
+        base["character_llm_mode"] = character_meta.get("character_llm_mode")
+        base["character_llm_mode_requested"] = character_meta.get(
+            "character_llm_mode_requested"
+        )
+        base["character_llm_fallback_reason"] = character_meta.get(
+            "character_llm_fallback_reason"
+        )
     director_meta = pipeline_result.meta or {}
     effective = director_meta.get("selected_subtopic_id")
     if effective is None and pipeline_result.topic_result:

@@ -14,6 +14,7 @@ class AgentLLMMode(str, Enum):
 
 DEFAULT_TOPIC_MODEL = "gpt-4o-mini"
 DEFAULT_STORY_MODEL = "gpt-4o-mini"
+DEFAULT_CHARACTER_MODEL = "gpt-4o-mini"
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,14 @@ def resolve_story_model() -> str:
         os.getenv("AGENT_LLM_STORY_MODEL")
         or os.getenv("AGENT_LLM_MODEL")
         or DEFAULT_STORY_MODEL
+    ).strip()
+
+
+def resolve_character_model() -> str:
+    return (
+        os.getenv("AGENT_LLM_CHARACTER_MODEL")
+        or os.getenv("AGENT_LLM_MODEL")
+        or DEFAULT_CHARACTER_MODEL
     ).strip()
 
 
