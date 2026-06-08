@@ -91,6 +91,7 @@ class PlanningDirectorInput:
     reference_character: ReferenceCharacter | None = None
     target_platform: str = "youtube_shorts"
     preferred_format: _format_mod.OutputFormat | None = None
+    max_revision_retries: int = 0
 
 
 @dataclass
@@ -339,6 +340,128 @@ def _build_storyboard(
     return StoryboardPlan(cuts=cuts, aspect_ratio=aspect, total_duration_sec=total)
 
 
+def _review_passed(review_result: ReviewAgentResult | None) -> bool:
+    report = review_result.review_report if review_result else None
+    return bool(report and report.passed)
+
+
+def _retry_target_value(review_result: ReviewAgentResult | None) -> str:
+    if review_result is None:
+        return ""
+    meta_target = (review_result.meta or {}).get("retry_target_agent")
+    if meta_target is not None:
+        return str(meta_target)
+    return review_result.retry_target_agent.value
+
+
+def _revision_history_entry(
+    *,
+    attempt: int,
+    review_result: ReviewAgentResult | None,
+    executed: bool,
+    stop_reason: str,
+) -> dict[str, Any]:
+    meta = review_result.meta if review_result else {}
+    return {
+        "attempt": attempt,
+        "retry_target_agent": _retry_target_value(review_result),
+        "retry_action": meta.get("retry_action") if isinstance(meta, dict) else None,
+        "revision_reason": meta.get("revision_reason") if isinstance(meta, dict) else None,
+        "executed": executed,
+        "stop_reason": stop_reason,
+        "review_passed": _review_passed(review_result),
+    }
+
+
+def _run_music_phase(
+    *,
+    input_data: PlanningDirectorInput,
+    topic_result: TopicAgentResult,
+    story_ctx: StoryContext,
+    character_result: CharacterAgentResult,
+    format_result: FormatAgentResult,
+    narration_result: NarrationSubtitleAgentResult,
+) -> MusicAgentResult:
+    return _music_mod.run_music_agent(
+        MusicAgentInput(
+            story=story_ctx,
+            emotion=input_data.selected_story_tone.label_ko,
+            duration_seconds=topic_result.duration_seconds,
+            character_profile=character_result.character_profile,
+            narration_script=narration_result.narration_script,
+            target_platform=input_data.target_platform,
+            format_plan=format_result.format_plan,
+        )
+    )
+
+
+def _run_production_phase(
+    *,
+    story_ctx: StoryContext,
+    character_result: CharacterAgentResult,
+    format_result: FormatAgentResult,
+    narration_result: NarrationSubtitleAgentResult,
+    music_result: MusicAgentResult,
+    project_slug: str,
+) -> tuple[StoryboardPlan, ProductionAgentResult]:
+    storyboard = _build_storyboard(
+        story_ctx=story_ctx,
+        character_result=character_result,
+        format_result=format_result,
+    )
+    production_result = _production_mod.run_production_agent(
+        ProductionAgentInput(
+            storyboard=storyboard,
+            narration=narration_result.narration_script,
+            subtitle=narration_result.subtitle_script,
+            music=music_result,
+            format=format_result.format_plan,
+            project_slug=project_slug,
+        )
+    )
+    return storyboard, production_result
+
+
+def _run_review_phase(
+    *,
+    input_data: PlanningDirectorInput,
+    pre: PlanningDirectorResult,
+    topic_result: TopicAgentResult,
+    storyboard: StoryboardPlan,
+    character_result: CharacterAgentResult,
+    format_result: FormatAgentResult,
+    narration_result: NarrationSubtitleAgentResult,
+    music_result: MusicAgentResult,
+) -> ReviewAgentResult:
+    plan = format_result.format_plan
+    assert plan is not None
+    return _review_mod.run_review_agent(
+        ReviewAgentInput(
+            production_result=ProductionResultSnapshot(
+                project_slug=input_data.project_slug or "mock_project",
+                format=plan.format,
+                target_duration_seconds=plan.target_duration_seconds,
+                actual_duration_seconds=storyboard.total_duration_sec,
+                character_consistency_score=0.92 if character_result.success else 0.5,
+                has_subtitle_track=bool(narration_result.subtitle_script.cues),
+                has_voice_track=bool(narration_result.narration_script.lines),
+                subtitle_cue_count=len(narration_result.subtitle_script.cues),
+                narration_line_count=len(narration_result.narration_script.lines),
+                render_success=True,
+                aspect_ratio=format_result.aspect_ratio,
+            ),
+            topic_result=topic_result,
+            story_result=pre.story_bundles[0].story_result if pre.story_bundles else None,
+            character_profile=character_result.character_profile,
+            narration_script=narration_result.narration_script,
+            subtitle_script=narration_result.subtitle_script,
+            music_result=music_result,
+            format_plan=format_result.format_plan,
+            duration_seconds=topic_result.duration_seconds,
+        )
+    )
+
+
 def run_planning_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResult:
     """Phase 3A-2: 01 Topic → 04 Format (05~08 생략)."""
     phase, early = _run_topic_story_phase(input_data)
@@ -464,16 +587,13 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
             narration_result=narration_result,
         )
 
-    music_result = _music_mod.run_music_agent(
-        MusicAgentInput(
-            story=story_ctx,
-            emotion=input_data.selected_story_tone.label_ko,
-            duration_seconds=topic_result.duration_seconds,
-            character_profile=character_result.character_profile,
-            narration_script=narration_result.narration_script,
-            target_platform=input_data.target_platform,
-            format_plan=format_result.format_plan,
-        )
+    music_result = _run_music_phase(
+        input_data=input_data,
+        topic_result=topic_result,
+        story_ctx=story_ctx,
+        character_result=character_result,
+        format_result=format_result,
+        narration_result=narration_result,
     )
     steps.append(DirectorStep.MUSIC.value)
     if not music_result.success:
@@ -491,20 +611,13 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
             music_result=music_result,
         )
 
-    storyboard = _build_storyboard(
+    storyboard, production_result = _run_production_phase(
         story_ctx=story_ctx,
         character_result=character_result,
         format_result=format_result,
-    )
-    production_result = _production_mod.run_production_agent(
-        ProductionAgentInput(
-            storyboard=storyboard,
-            narration=narration_result.narration_script,
-            subtitle=narration_result.subtitle_script,
-            music=music_result,
-            format=format_result.format_plan,
-            project_slug=input_data.project_slug,
-        )
+        narration_result=narration_result,
+        music_result=music_result,
+        project_slug=input_data.project_slug,
     )
     steps.append(DirectorStep.PRODUCTION.value)
     if not production_result.success:
@@ -524,36 +637,131 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
         )
 
     plan = format_result.format_plan
-    review_result = _review_mod.run_review_agent(
-        ReviewAgentInput(
-            production_result=ProductionResultSnapshot(
-                project_slug=input_data.project_slug or "mock_project",
-                format=plan.format,
-                target_duration_seconds=plan.target_duration_seconds,
-                actual_duration_seconds=storyboard.total_duration_sec,
-                character_consistency_score=0.92 if character_result.success else 0.5,
-                has_subtitle_track=bool(narration_result.subtitle_script.cues),
-                has_voice_track=bool(narration_result.narration_script.lines),
-                subtitle_cue_count=len(narration_result.subtitle_script.cues),
-                narration_line_count=len(narration_result.narration_script.lines),
-                render_success=True,
-                aspect_ratio=format_result.aspect_ratio,
-            ),
-            topic_result=topic_result,
-            story_result=pre.story_bundles[0].story_result if pre.story_bundles else None,
-            character_profile=character_result.character_profile,
-            narration_script=narration_result.narration_script,
-            subtitle_script=narration_result.subtitle_script,
-            music_result=music_result,
-            format_plan=format_result.format_plan,
-            duration_seconds=topic_result.duration_seconds,
-        )
+    review_result = _run_review_phase(
+        input_data=input_data,
+        pre=pre,
+        topic_result=topic_result,
+        storyboard=storyboard,
+        character_result=character_result,
+        format_result=format_result,
+        narration_result=narration_result,
+        music_result=music_result,
     )
     steps.append(DirectorStep.REVIEW.value)
 
-    review_passed = (
-        review_result.review_report.passed if review_result.review_report else False
-    )
+    revision_history: list[dict[str, Any]] = []
+    max_retries = max(0, int(input_data.max_revision_retries or 0))
+    supported_targets = {
+        DirectorStep.NARRATION_SUBTITLE.value,
+        DirectorStep.MUSIC.value,
+        DirectorStep.PRODUCTION.value,
+    }
+    attempts = 0
+    while not _review_passed(review_result):
+        target = _retry_target_value(review_result)
+        if max_retries <= attempts:
+            revision_history.append(
+                _revision_history_entry(
+                    attempt=attempts,
+                    review_result=review_result,
+                    executed=False,
+                    stop_reason="max_revision_retries_exceeded",
+                )
+            )
+            break
+        if target not in supported_targets:
+            revision_history.append(
+                _revision_history_entry(
+                    attempt=attempts + 1,
+                    review_result=review_result,
+                    executed=False,
+                    stop_reason="unsupported_retry_target",
+                )
+            )
+            break
+
+        attempts += 1
+        revision_history.append(
+            _revision_history_entry(
+                attempt=attempts,
+                review_result=review_result,
+                executed=True,
+                stop_reason="rerun_started",
+            )
+        )
+        if target == DirectorStep.NARRATION_SUBTITLE.value:
+            narration_result = _narration_mod.run_narration_subtitle_agent(
+                NarrationSubtitleAgentInput(
+                    story=story_ctx,
+                    tone=input_data.selected_story_tone,
+                    format=format_result.format_plan,
+                    locale=input_data.locale,
+                    project_slug=input_data.project_slug,
+                    character_profile=character_result.character_profile,
+                    character_prompt=character_result.character_prompt,
+                    target_platform=input_data.target_platform,
+                    duration_seconds=topic_result.duration_seconds,
+                )
+            )
+            steps.append(f"{DirectorStep.NARRATION_SUBTITLE.value}:revision_{attempts}")
+            if not narration_result.success or not narration_result.narration_script or not narration_result.subtitle_script:
+                revision_history[-1]["stop_reason"] = "rerun_failed"
+                break
+            music_result = _run_music_phase(
+                input_data=input_data,
+                topic_result=topic_result,
+                story_ctx=story_ctx,
+                character_result=character_result,
+                format_result=format_result,
+                narration_result=narration_result,
+            )
+            steps.append(f"{DirectorStep.MUSIC.value}:revision_{attempts}")
+            if not music_result.success:
+                revision_history[-1]["stop_reason"] = "rerun_failed"
+                break
+        elif target == DirectorStep.MUSIC.value:
+            music_result = _run_music_phase(
+                input_data=input_data,
+                topic_result=topic_result,
+                story_ctx=story_ctx,
+                character_result=character_result,
+                format_result=format_result,
+                narration_result=narration_result,
+            )
+            steps.append(f"{DirectorStep.MUSIC.value}:revision_{attempts}")
+            if not music_result.success:
+                revision_history[-1]["stop_reason"] = "rerun_failed"
+                break
+
+        storyboard, production_result = _run_production_phase(
+            story_ctx=story_ctx,
+            character_result=character_result,
+            format_result=format_result,
+            narration_result=narration_result,
+            music_result=music_result,
+            project_slug=input_data.project_slug,
+        )
+        steps.append(f"{DirectorStep.PRODUCTION.value}:revision_{attempts}")
+        if not production_result.success:
+            revision_history[-1]["stop_reason"] = "rerun_failed"
+            break
+        review_result = _run_review_phase(
+            input_data=input_data,
+            pre=pre,
+            topic_result=topic_result,
+            storyboard=storyboard,
+            character_result=character_result,
+            format_result=format_result,
+            narration_result=narration_result,
+            music_result=music_result,
+        )
+        steps.append(f"{DirectorStep.REVIEW.value}:revision_{attempts}")
+        revision_history[-1]["post_review_passed"] = _review_passed(review_result)
+        revision_history[-1]["stop_reason"] = (
+            "review_passed" if _review_passed(review_result) else "review_failed"
+        )
+
+    review_passed = _review_passed(review_result)
     return PlanningDirectorResult(
         success=review_passed,
         main_topic=pre.main_topic,
@@ -577,6 +785,8 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
                 "retry_target_agent": review_result.retry_target_agent.value,
                 "retry_action": review_result.meta.get("retry_action"),
                 "revision_reason": review_result.meta.get("revision_reason"),
+                "revision_attempts": attempts,
+                "revision_history": revision_history,
                 "recommended_cut_count": format_result.recommended_cut_count,
                 "aspect_ratio": format_result.aspect_ratio,
                 "auto_selected_subtopic_id": pre.meta.get("auto_selected_subtopic_id"),

@@ -42,6 +42,7 @@ class AgentRunDemoRequest(BaseModel):
     selected_story_tone: str = Field("comic", description="comic | emotional | twist")
     reference_character_name: str = "bposik_v2"
     target_platform: str = "youtube_shorts"
+    max_revision_retries: int = Field(0, ge=0, le=3)
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -293,6 +294,8 @@ def _demo_meta(
     if effective:
         base["selected_subtopic_id"] = effective
     base["auto_selected_subtopic_id"] = bool(auto)
+    base["revision_attempts"] = director_meta.get("revision_attempts", 0)
+    base["revision_history"] = _to_jsonable(director_meta.get("revision_history", []))
     return base
 
 
@@ -311,6 +314,7 @@ def run_demo_pipeline(body: AgentRunDemoRequest) -> dict[str, Any]:
             selected_story_tone=_parse_story_tone(body.selected_story_tone),
             reference_character=ReferenceCharacter(name=body.reference_character_name.strip()),
             target_platform=body.target_platform,
+            max_revision_retries=body.max_revision_retries,
         )
     )
     return {
