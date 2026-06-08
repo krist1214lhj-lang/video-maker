@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.llm.config import resolve_llm_mode, resolve_story_model, resolve_topic_model
+from agents.llm.config import (
+    resolve_llm_mode,
+    resolve_narration_subtitle_model,
+    resolve_story_model,
+    resolve_topic_model,
+)
 
 # OpenAI 공개 단가 근사 (USD per token)
 _MODEL_RATES: dict[str, tuple[float, float]] = {
@@ -27,13 +32,14 @@ def build_pipeline_llm_meta(
     *,
     topic_result: Any | None = None,
     story_bundles: list[Any] | None = None,
+    narration_result: Any | None = None,
 ) -> dict[str, Any]:
     """
     AGENT_LLM_MODE(요청)와 에이전트별 effective 모드·토큰·추정 비용.
 
     - llm_mode: 환경 변수 AGENT_LLM_MODE (요청값)
-    - topic_llm_mode / story_llm_mode: 실제 사용 모드
-    - topic_llm_usage / story_llm_usage: OpenAI usage dict
+    - topic_llm_mode / story_llm_mode / narration_subtitle_llm_mode: 실제 사용 모드
+    - topic_llm_usage / story_llm_usage / narration_subtitle_llm_usage: OpenAI usage dict
     - *_llm_est_cost_usd / llm_est_cost_usd_total: gpt-4o-mini 단가 근사
     """
     agent_llm_mode = resolve_llm_mode().value
@@ -71,19 +77,36 @@ def build_pipeline_llm_meta(
         model=str(story_model) if story_model else None,
     )
 
+    narration_meta: dict[str, Any] = {}
+    if narration_result is not None:
+        raw = getattr(narration_result, "meta", None) or {}
+        if isinstance(raw, dict):
+            narration_meta = raw
+    narration_llm_mode = narration_meta.get("narration_llm_mode") or narration_meta.get("llm_mode")
+    narration_llm_usage = narration_meta.get("llm_usage")
+    narration_model = narration_meta.get("llm_model") or resolve_narration_subtitle_model()
+    narration_cost = estimate_llm_cost_usd(
+        narration_llm_usage if isinstance(narration_llm_usage, dict) else None,
+        model=str(narration_model) if narration_model else None,
+    )
+
     total_cost: float | None = None
-    if topic_cost is not None or story_cost is not None:
-        total_cost = (topic_cost or 0.0) + (story_cost or 0.0)
+    if topic_cost is not None or story_cost is not None or narration_cost is not None:
+        total_cost = (topic_cost or 0.0) + (story_cost or 0.0) + (narration_cost or 0.0)
 
     return {
         "llm_mode": agent_llm_mode,
         "topic_llm_mode": topic_llm_mode,
         "story_llm_mode": story_llm_mode,
+        "narration_subtitle_llm_mode": narration_llm_mode,
         "topic_llm_usage": topic_llm_usage,
         "story_llm_usage": story_llm_usage,
+        "narration_subtitle_llm_usage": narration_llm_usage,
         "topic_llm_model": topic_model,
         "story_llm_model": story_model,
+        "narration_subtitle_llm_model": narration_model,
         "topic_llm_est_cost_usd": round(topic_cost, 6) if topic_cost is not None else None,
         "story_llm_est_cost_usd": round(story_cost, 6) if story_cost is not None else None,
+        "narration_subtitle_llm_est_cost_usd": round(narration_cost, 6) if narration_cost is not None else None,
         "llm_est_cost_usd_total": round(total_cost, 6) if total_cost is not None else None,
     }

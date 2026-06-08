@@ -146,6 +146,7 @@ def _merge_llm_meta(
     *,
     topic_result: TopicAgentResult | None = None,
     story_bundles: list[SubTopicStoryBundle] | None = None,
+    narration_result: NarrationSubtitleAgentResult | None = None,
 ) -> dict[str, Any]:
     from agents.llm.pipeline_meta import build_pipeline_llm_meta
 
@@ -154,6 +155,7 @@ def _merge_llm_meta(
         build_pipeline_llm_meta(
             topic_result=topic_result,
             story_bundles=story_bundles,
+            narration_result=narration_result,
         )
     )
     return merged
@@ -431,6 +433,10 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
             format=format_result.format_plan,
             locale=input_data.locale,
             project_slug=input_data.project_slug,
+            character_profile=character_result.character_profile,
+            character_prompt=character_result.character_prompt,
+            target_platform=input_data.target_platform,
+            duration_seconds=topic_result.duration_seconds,
         )
     )
     steps.append(DirectorStep.NARRATION_SUBTITLE.value)
@@ -554,6 +560,7 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
             },
             topic_result=topic_result,
             story_bundles=pre.story_bundles,
+            narration_result=narration_result,
         ),
     )
 

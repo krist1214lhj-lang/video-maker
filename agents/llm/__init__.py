@@ -7,10 +7,12 @@ from agents.llm.config import (
     resolve_character_model,
     resolve_effective_llm_mode,
     resolve_llm_mode,
+    resolve_narration_subtitle_model,
     resolve_story_model,
     resolve_topic_model,
 )
 from agents.llm.character_generator import GptCharacterPromptBuilder, create_character_prompt_builder, builder_mode_label as character_builder_label
+from agents.llm.narration_subtitle_generator import GptNarrationSubtitleBuilder, create_narration_subtitle_builder, builder_mode_label as narration_subtitle_builder_label
 from agents.llm.openai_client import LLMClient, LLMClientError, OpenAIChatClient
 from agents.llm.story_generator import GptStoryGenerator, create_story_generator, generator_mode_label as story_generator_label
 from agents.llm.pipeline_meta import build_pipeline_llm_meta
@@ -20,6 +22,7 @@ __all__ = [
     "build_pipeline_llm_meta",
     "AgentLLMMode",
     "GptCharacterPromptBuilder",
+    "GptNarrationSubtitleBuilder",
     "GptStoryGenerator",
     "GptTopicGenerator",
     "LLMClient",
@@ -28,12 +31,15 @@ __all__ = [
     "ResolvedLLMMode",
     "character_builder_label",
     "create_character_prompt_builder",
+    "create_narration_subtitle_builder",
     "create_story_generator",
     "create_topic_generator",
     "openai_api_key",
+    "narration_subtitle_builder_label",
     "resolve_character_model",
     "resolve_effective_llm_mode",
     "resolve_llm_mode",
+    "resolve_narration_subtitle_model",
     "resolve_story_model",
     "resolve_topic_model",
     "story_generator_label",

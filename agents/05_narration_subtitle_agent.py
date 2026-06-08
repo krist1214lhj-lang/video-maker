@@ -22,6 +22,7 @@ _format_mod = importlib.import_module("agents.04_format_agent")
 _story_mod = importlib.import_module("agents.02_story_agent")
 
 StoryContext = _char_mod.StoryContext
+CharacterProfile = _char_mod.CharacterProfile
 StoryTone = _story_mod.StoryTone
 OutputFormat = _format_mod.OutputFormat
 FormatPlan = _format_mod.FormatPlan
@@ -66,12 +67,29 @@ class VoiceStyle:
 
 
 @dataclass
+class CharacterVoiceProfile:
+    narrator_perspective: str
+    speaking_style: str
+    sarcasm_level: str
+    energy_level: str
+    age_tone: str
+    catchphrase_style: str = ""
+    sentence_length: str = "short"
+    emotional_range: str = ""
+
+
+@dataclass
 class NarrationSubtitleAgentInput:
     story: StoryContext
     tone: StoryTone
     format: OutputFormat | FormatPlan
     locale: str = "ko"
     project_slug: str = ""
+    character_profile: CharacterProfile | None = None
+    character_prompt: str = ""
+    character_voice_profile: CharacterVoiceProfile | None = None
+    target_platform: str = ""
+    duration_seconds: int | None = None
 
 
 @dataclass
@@ -99,6 +117,51 @@ def _resolve_format(fmt: OutputFormat | FormatPlan) -> OutputFormat:
     return fmt
 
 
+def _target_duration_seconds(input_data: NarrationSubtitleAgentInput) -> int:
+    if isinstance(input_data.format, FormatPlan):
+        return max(1, int(input_data.format.target_duration_seconds))
+    if input_data.duration_seconds:
+        return max(1, int(input_data.duration_seconds))
+    return 15
+
+
+def default_character_voice_profile(
+    input_data: NarrationSubtitleAgentInput,
+) -> CharacterVoiceProfile:
+    profile = input_data.character_profile
+    character_name = (getattr(profile, "character_name", "") or "").strip().lower()
+    if input_data.character_voice_profile is not None:
+        return input_data.character_voice_profile
+    if character_name in {"bposik", "bposik_v2"} or "뽀식" in input_data.story.main_topic:
+        return CharacterVoiceProfile(
+            narrator_perspective="first_person",
+            speaking_style="playful_dry",
+            sarcasm_level="medium",
+            energy_level="chaotic",
+            age_tone="senior",
+            catchphrase_style="짧게 투덜거리지만 귀엽게 마무리",
+            sentence_length="very_short",
+            emotional_range="시니컬하지만 따뜻함, 천방지축 행동과 노견 여유가 공존",
+        )
+    return CharacterVoiceProfile(
+        narrator_perspective="third_person",
+        speaking_style="playful" if input_data.tone == StoryTone.COMIC else "warm",
+        sarcasm_level="low" if input_data.tone == StoryTone.COMIC else "none",
+        energy_level="high" if input_data.tone == StoryTone.COMIC else "moderate",
+        age_tone="adult",
+        sentence_length="short",
+        emotional_range=input_data.tone.label_ko,
+    )
+
+
+def estimate_voice_seconds(text: str) -> float:
+    compact = "".join((text or "").split())
+    if not compact:
+        return 0.0
+    # Korean short-form narration usually lands around 7-9 chars/sec.
+    return round(max(1.0, len(compact) / 8.0), 2)
+
+
 @dataclass
 class MockNarrationSubtitleBuilder:
     def build(
@@ -108,6 +171,8 @@ class MockNarrationSubtitleBuilder:
         tone = input_data.tone
         out_fmt = _resolve_format(input_data.format)
         cut_count = max(1, story.cut_count)
+        target_duration = _target_duration_seconds(input_data)
+        voice_profile = default_character_voice_profile(input_data)
 
         pace = "fast" if out_fmt == OutputFormat.SHORTS else "moderate"
         voice_map = {
@@ -119,7 +184,7 @@ class MockNarrationSubtitleBuilder:
 
         lines: list[NarrationLine] = []
         cues: list[SubtitleCue] = []
-        sec_per = max(2.0, 15.0 / cut_count)
+        sec_per = max(1.0, float(target_duration) / cut_count)
         for i in range(1, cut_count + 1):
             narr = f"[컷{i}] {story.subtopic_title}: {story.summary[:40]}…"
             lines.append(NarrationLine(cut=i, text=narr, emotion=tone.label_ko))
@@ -150,13 +215,22 @@ class MockNarrationSubtitleBuilder:
             pitch=pitch,
             force_short_dialogue=out_fmt in {OutputFormat.SHORTS, OutputFormat.CARTOON},
         )
+        self._last_meta = {
+            "character_voice_profile": voice_profile.__dict__,
+            "estimated_voice_seconds": estimate_voice_seconds(full_text),
+        }
         return narration, subtitle, voice
+
+    @property
+    def last_meta(self) -> dict[str, Any]:
+        return getattr(self, "_last_meta", {})
 
 
 def run_narration_subtitle_agent(
     input_data: NarrationSubtitleAgentInput,
     *,
     builder: NarrationSubtitleBuilder | None = None,
+    llm_mode: str | None = None,
 ) -> NarrationSubtitleAgentResult:
     if not input_data.story.main_topic.strip():
         return NarrationSubtitleAgentResult(
@@ -166,14 +240,54 @@ def run_narration_subtitle_agent(
             voice_style=None,
             meta={"error": "story is required"},
         )
-    gen = builder or MockNarrationSubtitleBuilder()
-    narration, subtitle, voice = gen.build(input_data)
+    from agents.llm.config import AgentLLMMode, ResolvedLLMMode
+    from agents.llm.openai_client import LLMClientError
+    from agents.llm.narration_subtitle_generator import (
+        builder_mode_label,
+        create_narration_subtitle_builder,
+    )
+
+    resolved = ResolvedLLMMode(mode=AgentLLMMode.MOCK, requested=AgentLLMMode.MOCK)
+    gen = builder
+    if gen is None:
+        gen, resolved = create_narration_subtitle_builder(llm_mode)
+
+    fallback_error = None
+    try:
+        narration, subtitle, voice = gen.build(input_data)
+    except LLMClientError as exc:
+        fallback_error = str(exc)
+        gen = MockNarrationSubtitleBuilder()
+        narration, subtitle, voice = gen.build(input_data)
+        resolved = ResolvedLLMMode(
+            mode=AgentLLMMode.MOCK,
+            requested=resolved.requested,
+            fallback_reason="gpt_error",
+        )
+    meta: dict[str, Any] = {
+        "builder": builder_mode_label(gen, resolved=resolved),
+        "line_count": len(narration.lines),
+        "cue_count": len(subtitle.cues),
+        "llm_mode": resolved.mode.value,
+        "llm_mode_requested": resolved.requested.value,
+        "llm_fallback_reason": resolved.fallback_reason,
+        "narration_llm_mode": resolved.mode.value,
+        "narration_llm_mode_requested": resolved.requested.value,
+        "narration_llm_fallback_reason": resolved.fallback_reason,
+        "subtitle_llm_mode": resolved.mode.value,
+        "subtitle_llm_mode_requested": resolved.requested.value,
+        "subtitle_llm_fallback_reason": resolved.fallback_reason,
+    }
+    if fallback_error:
+        meta["llm_error"] = fallback_error
+    if hasattr(gen, "last_meta"):
+        meta.update(getattr(gen, "last_meta") or {})
     return NarrationSubtitleAgentResult(
         success=True,
         narration_script=narration,
         subtitle_script=subtitle,
         voice_style=voice,
-        meta={"builder": type(gen).__name__, "line_count": len(narration.lines)},
+        meta=meta,
     )
 
 

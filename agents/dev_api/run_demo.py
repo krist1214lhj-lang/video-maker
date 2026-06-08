@@ -140,6 +140,19 @@ def _format_payload(result: Any) -> dict[str, Any]:
     }
 
 
+def _narration_payload(result: Any) -> dict[str, Any]:
+    nr = result.narration_result
+    if nr is None or not nr.success:
+        return {"success": False}
+    return {
+        "success": nr.success,
+        "narration_script": _to_jsonable(nr.narration_script),
+        "subtitle_script": _to_jsonable(nr.subtitle_script),
+        "voice_style": _to_jsonable(nr.voice_style),
+        "meta": _to_jsonable(nr.meta),
+    }
+
+
 def _demo_meta(
     pipeline_result: Any,
     *,
@@ -165,6 +178,7 @@ def _demo_meta(
         build_pipeline_llm_meta(
             topic_result=pipeline_result.topic_result,
             story_bundles=pipeline_result.story_bundles,
+            narration_result=pipeline_result.narration_result,
         )
     )
     character_meta = (
@@ -179,6 +193,26 @@ def _demo_meta(
         )
         base["character_llm_fallback_reason"] = character_meta.get(
             "character_llm_fallback_reason"
+        )
+    narration_meta = (
+        pipeline_result.narration_result.meta
+        if pipeline_result.narration_result
+        else {}
+    )
+    if isinstance(narration_meta, dict):
+        base["narration_llm_mode"] = narration_meta.get("narration_llm_mode")
+        base["narration_llm_mode_requested"] = narration_meta.get(
+            "narration_llm_mode_requested"
+        )
+        base["narration_llm_fallback_reason"] = narration_meta.get(
+            "narration_llm_fallback_reason"
+        )
+        base["subtitle_llm_mode"] = narration_meta.get("subtitle_llm_mode")
+        base["subtitle_llm_mode_requested"] = narration_meta.get(
+            "subtitle_llm_mode_requested"
+        )
+        base["subtitle_llm_fallback_reason"] = narration_meta.get(
+            "subtitle_llm_fallback_reason"
         )
     director_meta = pipeline_result.meta or {}
     effective = director_meta.get("selected_subtopic_id")
@@ -222,6 +256,7 @@ def run_demo_pipeline(body: AgentRunDemoRequest) -> dict[str, Any]:
         "story": _story_payload(pipeline_result),
         "character": _character_payload(pipeline_result),
         "format": _format_payload(pipeline_result),
+        "narration_subtitle": _narration_payload(pipeline_result),
         "meta": _demo_meta(
             pipeline_result,
             requested_subtopic_id=requested_subtopic_id,
