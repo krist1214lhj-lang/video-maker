@@ -27,6 +27,8 @@ OutputFormat = _format_mod.OutputFormat
 
 class RetryTargetAgent(str, Enum):
     NONE = ""
+    TOPIC = "01_topic"
+    STORY = "02_story"
     CHARACTER = "03_character"
     NARRATION_SUBTITLE = "05_narration_subtitle"
     MUSIC = "06_music"
@@ -35,9 +37,16 @@ class RetryTargetAgent(str, Enum):
 
 
 class ReviewCheckId(str, Enum):
+    TOPIC_CONSISTENCY = "topic_consistency"
+    STORY_FLOW = "story_flow"
     CHARACTER_CONSISTENCY = "character_consistency"
+    NARRATION_QUALITY = "narration_quality"
     SUBTITLE_PRESENT = "subtitle_present"
+    SUBTITLE_FIT = "subtitle_fit"
     VOICE_PRESENT = "voice_present"
+    MUSIC_FIT = "music_fit"
+    SHORTS_FIT = "shorts_fit"
+    BPOSIK_VOICE = "bposik_voice"
     DURATION = "duration"
     OUTPUT_FORMAT = "output_format"
 
@@ -73,11 +82,24 @@ class ReviewReport:
     score: float
     checks: list[ReviewCheck]
     summary_ko: str
+    strengths: list[str] = field(default_factory=list)
+    weaknesses: list[str] = field(default_factory=list)
+    revision_required: bool = False
+    retry_action: str = ""
+    revision_reason: str = ""
 
 
 @dataclass
 class ReviewAgentInput:
     production_result: ProductionResultSnapshot
+    topic_result: Any | None = None
+    story_result: Any | None = None
+    character_profile: Any | None = None
+    narration_script: Any | None = None
+    subtitle_script: Any | None = None
+    music_result: Any | None = None
+    format_plan: Any | None = None
+    duration_seconds: int | None = None
 
 
 @dataclass
@@ -173,21 +195,92 @@ class MockReviewer:
         passed = all(c.passed for c in checks)
         score = sum(1 for c in checks if c.passed) / len(checks) if checks else 0.0
         summary = "검증 통과" if passed else f"재시도 권장: {retry.value or 'none'}"
-        return ReviewReport(passed=passed, score=score, checks=checks, summary_ko=summary), retry
+        action = ""
+        reason = ""
+        if not passed:
+            if retry == RetryTargetAgent.CHARACTER:
+                action = "strengthen_identity"
+                reason = "캐릭터 일관성 점수가 기준보다 낮습니다."
+            elif retry == RetryTargetAgent.NARRATION_SUBTITLE:
+                action = "repair_script_tracks"
+                reason = "나레이션 또는 자막 트랙이 부족합니다."
+            elif retry == RetryTargetAgent.PRODUCTION:
+                action = "fix_render_or_timing"
+                reason = "렌더 또는 길이 조건을 다시 맞춰야 합니다."
+            else:
+                action = "review_pipeline"
+                reason = "검증 실패 항목을 재검토해야 합니다."
+        strengths = ["기본 산출물 구조가 유효합니다."] if passed else []
+        weaknesses = [reason] if reason else []
+        return (
+            ReviewReport(
+                passed=passed,
+                score=score,
+                checks=checks,
+                summary_ko=summary,
+                strengths=strengths,
+                weaknesses=weaknesses,
+                revision_required=not passed,
+                retry_action=action,
+                revision_reason=reason,
+            ),
+            retry,
+        )
 
 
 def run_review_agent(
     input_data: ReviewAgentInput,
     *,
     reviewer: Reviewer | None = None,
+    llm_mode: str | None = None,
 ) -> ReviewAgentResult:
-    gen = reviewer or MockReviewer()
-    report, retry = gen.review(input_data)
+    from agents.llm.config import AgentLLMMode, ResolvedLLMMode
+    from agents.llm.openai_client import LLMClientError
+    from agents.llm.review_generator import create_review_generator, reviewer_mode_label
+
+    resolved = ResolvedLLMMode(mode=AgentLLMMode.MOCK, requested=AgentLLMMode.MOCK)
+    gen = reviewer
+    if gen is None:
+        gen, resolved = create_review_generator(llm_mode)
+
+    fallback_error = None
+    try:
+        report, retry = gen.review(input_data)
+    except LLMClientError as exc:
+        fallback_error = str(exc)
+        gen = MockReviewer()
+        report, retry = gen.review(input_data)
+        resolved = ResolvedLLMMode(
+            mode=AgentLLMMode.MOCK,
+            requested=resolved.requested,
+            fallback_reason="gpt_error",
+        )
+
+    final_retry = retry if not report.passed else RetryTargetAgent.NONE
+    meta: dict[str, Any] = {
+        "reviewer": reviewer_mode_label(gen, resolved=resolved),
+        "llm_mode": resolved.mode.value,
+        "llm_mode_requested": resolved.requested.value,
+        "llm_fallback_reason": resolved.fallback_reason,
+        "review_llm_mode": resolved.mode.value,
+        "review_llm_mode_requested": resolved.requested.value,
+        "review_llm_fallback_reason": resolved.fallback_reason,
+        "review_passed": report.passed,
+        "quality_score": report.score,
+        "retry_target_agent": final_retry.value,
+        "retry_action": report.retry_action if final_retry != RetryTargetAgent.NONE else "",
+        "revision_reason": report.revision_reason if final_retry != RetryTargetAgent.NONE else "",
+        "review_summary": report.summary_ko,
+    }
+    if fallback_error:
+        meta["llm_error"] = fallback_error
+    if hasattr(gen, "last_meta"):
+        meta.update(getattr(gen, "last_meta") or {})
     return ReviewAgentResult(
         success=True,
         review_report=report,
-        retry_target_agent=retry if not report.passed else RetryTargetAgent.NONE,
-        meta={"reviewer": type(gen).__name__},
+        retry_target_agent=final_retry,
+        meta=meta,
     )
 
 

@@ -7,8 +7,9 @@ uvicorn: `app_with_dev_routes:app` (start_server.py 기본)
 
 from main import app
 
-from agents.dev_api import register_run_demo_routes
+from agents.dev_api import register_project_status_routes, register_run_demo_routes
 
 register_run_demo_routes(app)
+register_project_status_routes(app)
 
 __all__ = ["app"]

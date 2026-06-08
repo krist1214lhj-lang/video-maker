@@ -16,6 +16,8 @@ DEFAULT_TOPIC_MODEL = "gpt-4o-mini"
 DEFAULT_STORY_MODEL = "gpt-4o-mini"
 DEFAULT_CHARACTER_MODEL = "gpt-4o-mini"
 DEFAULT_NARRATION_SUBTITLE_MODEL = "gpt-4o-mini"
+DEFAULT_MUSIC_MODEL = "gpt-4o-mini"
+DEFAULT_REVIEW_MODEL = "gpt-4o-mini"
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,22 @@ def resolve_narration_subtitle_model() -> str:
         os.getenv("AGENT_LLM_NARRATION_SUBTITLE_MODEL")
         or os.getenv("AGENT_LLM_MODEL")
         or DEFAULT_NARRATION_SUBTITLE_MODEL
+    ).strip()
+
+
+def resolve_music_model() -> str:
+    return (
+        os.getenv("AGENT_LLM_MUSIC_MODEL")
+        or os.getenv("AGENT_LLM_MODEL")
+        or DEFAULT_MUSIC_MODEL
+    ).strip()
+
+
+def resolve_review_model() -> str:
+    return (
+        os.getenv("AGENT_LLM_REVIEW_MODEL")
+        or os.getenv("AGENT_LLM_MODEL")
+        or DEFAULT_REVIEW_MODEL
     ).strip()
 
 

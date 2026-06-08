@@ -147,6 +147,8 @@ def _merge_llm_meta(
     topic_result: TopicAgentResult | None = None,
     story_bundles: list[SubTopicStoryBundle] | None = None,
     narration_result: NarrationSubtitleAgentResult | None = None,
+    music_result: MusicAgentResult | None = None,
+    review_result: ReviewAgentResult | None = None,
 ) -> dict[str, Any]:
     from agents.llm.pipeline_meta import build_pipeline_llm_meta
 
@@ -156,6 +158,8 @@ def _merge_llm_meta(
             topic_result=topic_result,
             story_bundles=story_bundles,
             narration_result=narration_result,
+            music_result=music_result,
+            review_result=review_result,
         )
     )
     return merged
@@ -180,7 +184,13 @@ def _fail(
     meta = {"failed_at": failed_at.value}
     if extra_meta:
         meta.update(extra_meta)
-    meta = _merge_llm_meta(meta, topic_result=topic_result, story_bundles=bundles)
+    meta = _merge_llm_meta(
+        meta,
+        topic_result=topic_result,
+        story_bundles=bundles,
+        narration_result=narration_result,
+        music_result=music_result,
+    )
     return PlanningDirectorResult(
         success=False,
         main_topic=main_topic,
@@ -459,6 +469,10 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
             story=story_ctx,
             emotion=input_data.selected_story_tone.label_ko,
             duration_seconds=topic_result.duration_seconds,
+            character_profile=character_result.character_profile,
+            narration_script=narration_result.narration_script,
+            target_platform=input_data.target_platform,
+            format_plan=format_result.format_plan,
         )
     )
     steps.append(DirectorStep.MUSIC.value)
@@ -524,7 +538,15 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
                 narration_line_count=len(narration_result.narration_script.lines),
                 render_success=True,
                 aspect_ratio=format_result.aspect_ratio,
-            )
+            ),
+            topic_result=topic_result,
+            story_result=pre.story_bundles[0].story_result if pre.story_bundles else None,
+            character_profile=character_result.character_profile,
+            narration_script=narration_result.narration_script,
+            subtitle_script=narration_result.subtitle_script,
+            music_result=music_result,
+            format_plan=format_result.format_plan,
+            duration_seconds=topic_result.duration_seconds,
         )
     )
     steps.append(DirectorStep.REVIEW.value)
@@ -553,6 +575,8 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
                 "format": plan.format.value,
                 "review_passed": review_passed,
                 "retry_target_agent": review_result.retry_target_agent.value,
+                "retry_action": review_result.meta.get("retry_action"),
+                "revision_reason": review_result.meta.get("revision_reason"),
                 "recommended_cut_count": format_result.recommended_cut_count,
                 "aspect_ratio": format_result.aspect_ratio,
                 "auto_selected_subtopic_id": pre.meta.get("auto_selected_subtopic_id"),
@@ -561,6 +585,8 @@ def run_full_pipeline(input_data: PlanningDirectorInput) -> PlanningDirectorResu
             topic_result=topic_result,
             story_bundles=pre.story_bundles,
             narration_result=narration_result,
+            music_result=music_result,
+            review_result=review_result,
         ),
     )
 

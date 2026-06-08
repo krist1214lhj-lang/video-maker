@@ -153,6 +153,40 @@ def _narration_payload(result: Any) -> dict[str, Any]:
     }
 
 
+def _music_payload(result: Any) -> dict[str, Any]:
+    mr = result.music_result
+    if mr is None or not mr.success:
+        return {"success": False}
+    return {
+        "success": mr.success,
+        "music_style": mr.music_style,
+        "bpm": mr.bpm,
+        "music_prompt": mr.music_prompt,
+        "meta": _to_jsonable(mr.meta),
+    }
+
+
+def _review_payload(result: Any) -> dict[str, Any]:
+    rr = result.review_result
+    if rr is None or not rr.success:
+        return {"success": False}
+    report = rr.review_report
+    return {
+        "success": rr.success,
+        "review_passed": report.passed if report else None,
+        "quality_score": report.score if report else None,
+        "strengths": _to_jsonable(report.strengths) if report else [],
+        "weaknesses": _to_jsonable(report.weaknesses) if report else [],
+        "revision_required": report.revision_required if report else None,
+        "retry_target_agent": rr.retry_target_agent.value,
+        "retry_action": report.retry_action if report else "",
+        "revision_reason": report.revision_reason if report else "",
+        "review_summary": report.summary_ko if report else "",
+        "checks": _to_jsonable(report.checks) if report else [],
+        "meta": _to_jsonable(rr.meta),
+    }
+
+
 def _demo_meta(
     pipeline_result: Any,
     *,
@@ -179,6 +213,8 @@ def _demo_meta(
             topic_result=pipeline_result.topic_result,
             story_bundles=pipeline_result.story_bundles,
             narration_result=pipeline_result.narration_result,
+            music_result=pipeline_result.music_result,
+            review_result=pipeline_result.review_result,
         )
     )
     character_meta = (
@@ -214,6 +250,34 @@ def _demo_meta(
         base["subtitle_llm_fallback_reason"] = narration_meta.get(
             "subtitle_llm_fallback_reason"
         )
+    music_meta = (
+        pipeline_result.music_result.meta
+        if pipeline_result.music_result
+        else {}
+    )
+    if isinstance(music_meta, dict):
+        base["music_llm_mode"] = music_meta.get("music_llm_mode")
+        base["music_llm_mode_requested"] = music_meta.get(
+            "music_llm_mode_requested"
+        )
+        base["music_llm_fallback_reason"] = music_meta.get(
+            "music_llm_fallback_reason"
+        )
+    review_meta = (
+        pipeline_result.review_result.meta
+        if pipeline_result.review_result
+        else {}
+    )
+    if isinstance(review_meta, dict):
+        base["review_llm_mode"] = review_meta.get("review_llm_mode")
+        base["review_llm_mode_requested"] = review_meta.get(
+            "review_llm_mode_requested"
+        )
+        base["review_llm_fallback_reason"] = review_meta.get(
+            "review_llm_fallback_reason"
+        )
+        base["retry_action"] = review_meta.get("retry_action")
+        base["revision_reason"] = review_meta.get("revision_reason")
     director_meta = pipeline_result.meta or {}
     effective = director_meta.get("selected_subtopic_id")
     if effective is None and pipeline_result.topic_result:
@@ -257,6 +321,8 @@ def run_demo_pipeline(body: AgentRunDemoRequest) -> dict[str, Any]:
         "character": _character_payload(pipeline_result),
         "format": _format_payload(pipeline_result),
         "narration_subtitle": _narration_payload(pipeline_result),
+        "music": _music_payload(pipeline_result),
+        "review": _review_payload(pipeline_result),
         "meta": _demo_meta(
             pipeline_result,
             requested_subtopic_id=requested_subtopic_id,

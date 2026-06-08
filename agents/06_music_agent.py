@@ -20,6 +20,7 @@ _char_mod = importlib.import_module("agents.03_character_agent")
 _story_mod = importlib.import_module("agents.02_story_agent")
 
 StoryContext = _char_mod.StoryContext
+CharacterProfile = _char_mod.CharacterProfile
 StoryTone = _story_mod.StoryTone
 
 
@@ -28,6 +29,10 @@ class MusicAgentInput:
     story: StoryContext
     emotion: str
     duration_seconds: int = 15
+    character_profile: CharacterProfile | None = None
+    narration_script: Any | None = None
+    target_platform: str = "youtube_shorts"
+    format_plan: Any | None = None
 
 
 @dataclass
@@ -74,13 +79,26 @@ class MockMusicPlanner:
             f"style={style}, {bpm} BPM, duration≈{duration}s, "
             f"no vocals, loop-friendly ending."
         )
+        self._last_meta = {
+            "mood": emotion,
+            "instruments": [],
+            "duration_seconds": duration,
+            "llm_usage": None,
+            "llm_model": None,
+            "llm_est_cost_usd": None,
+        }
         return style, bpm, prompt
+
+    @property
+    def last_meta(self) -> dict[str, Any]:
+        return getattr(self, "_last_meta", {})
 
 
 def run_music_agent(
     input_data: MusicAgentInput,
     *,
     planner: MusicPlanner | None = None,
+    llm_mode: str | None = None,
 ) -> MusicAgentResult:
     if not input_data.story.main_topic.strip():
         return MusicAgentResult(
@@ -90,14 +108,47 @@ def run_music_agent(
             music_prompt="",
             meta={"error": "story is required"},
         )
-    gen = planner or MockMusicPlanner()
-    style, bpm, prompt = gen.plan(input_data)
+    from agents.llm.config import AgentLLMMode, ResolvedLLMMode
+    from agents.llm.music_generator import create_music_planner, planner_mode_label
+    from agents.llm.openai_client import LLMClientError
+
+    resolved = ResolvedLLMMode(mode=AgentLLMMode.MOCK, requested=AgentLLMMode.MOCK)
+    gen = planner
+    if gen is None:
+        gen, resolved = create_music_planner(llm_mode)
+
+    fallback_error = None
+    try:
+        style, bpm, prompt = gen.plan(input_data)
+    except LLMClientError as exc:
+        fallback_error = str(exc)
+        gen = MockMusicPlanner()
+        style, bpm, prompt = gen.plan(input_data)
+        resolved = ResolvedLLMMode(
+            mode=AgentLLMMode.MOCK,
+            requested=resolved.requested,
+            fallback_reason="gpt_error",
+        )
+
+    meta: dict[str, Any] = {
+        "planner": planner_mode_label(gen, resolved=resolved),
+        "llm_mode": resolved.mode.value,
+        "llm_mode_requested": resolved.requested.value,
+        "llm_fallback_reason": resolved.fallback_reason,
+        "music_llm_mode": resolved.mode.value,
+        "music_llm_mode_requested": resolved.requested.value,
+        "music_llm_fallback_reason": resolved.fallback_reason,
+    }
+    if fallback_error:
+        meta["llm_error"] = fallback_error
+    if hasattr(gen, "last_meta"):
+        meta.update(getattr(gen, "last_meta") or {})
     return MusicAgentResult(
         success=True,
         music_style=style,
         bpm=bpm,
         music_prompt=prompt,
-        meta={"planner": type(gen).__name__},
+        meta=meta,
     )
 
 
